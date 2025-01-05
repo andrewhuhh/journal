@@ -32,15 +32,13 @@ export default defineConfig(({ mode }) => {
             if (info.endsWith('.svg')) {
               return 'assets/[name][extname]';
             }
-            if (info.endsWith('.css')) {
-              return 'assets/[name][extname]';
-            }
             return 'assets/[name]-[hash][extname]';
           }
         }
       }
     },
     root: 'src',
+    publicDir: '../public',
     envDir: '..',
     base: '/journal/',
   };

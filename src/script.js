@@ -431,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // User is signed out
             container?.classList.add('not-authenticated');
             authButton.innerHTML = `
-                <img src="/journal/assets/google-icon.svg" alt="Google">
+                <img src="./assets/google-icon.svg" alt="Google">
                 <span>Sign in with Google</span>
             `;
             authButton.classList.add('sign-in');
