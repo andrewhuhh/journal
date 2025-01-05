@@ -4,10 +4,53 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Journal</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
 </head>
 <body>
+    <!-- Mobile menu toggle -->
+    <button class="mobile-menu-toggle">
+        <span class="material-icons-outlined">menu</span>
+    </button>
+
+    <!-- Menu overlay for mobile -->
+    <div class="menu-overlay"></div>
+
+    <!-- Auth header -->
+    <div class="auth-header">
+        <button class="auth-button sign-in">
+            <span class="material-icons-outlined">account_circle</span>
+        </button>
+    </div>
+
+    <!-- Auth error message -->
+    <div class="auth-error">
+        <span class="material-icons-outlined">error_outline</span>
+        Sign-in was cancelled
+    </div>
+
+    <!-- Auth menu (moved to body level for better positioning) -->
+    <div class="auth-menu">
+        <div class="auth-menu-header">
+            <div class="auth-menu-user"></div>
+            <div class="auth-menu-email"></div>
+        </div>
+        <div class="auth-menu-item sign-out">
+            <span class="material-icons-outlined">logout</span>
+            Sign Out
+        </div>
+    </div>
+
+    <!-- Menu container -->
+    <div class="menu-container">
+        <div class="menu-items">
+            <div class="menu-item">
+                <span class="material-icons-outlined">history</span>
+                Journal History
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="entry-editor">
             <div class="current-time">
@@ -31,7 +74,7 @@
                 </div>
                 <button class="submit-button">
                     <span class="material-icons-outlined">check</span>
-                    Save Entry
+                    Save
                     <span class="shortcut-hint">Ctrl+Enter</span>
                 </button>
             </div>
@@ -63,6 +106,6 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script type="module" src="./script.js"></script>
 </body>
 </html> 
