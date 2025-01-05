@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const entriesToSave = journalEntries.map(entry => ({
                 content: entry.content,
-                date: entry.date.toISOString(),
+                date: entry.date.getTime(),
                 images: entry.images || []
             }));
             localStorage.setItem(STORAGE_KEY, JSON.stringify(entriesToSave));

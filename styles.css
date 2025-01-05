@@ -537,8 +537,6 @@ body {
 
 .dialog {
     background: var(--flat-color);
-    backdrop-filter: blur(var(--blur-strength));
-    -webkit-backdrop-filter: blur(var(--blur-strength));
     border: 1px solid var(--border-color);
     border-radius: 20px;
     padding: 28px;
