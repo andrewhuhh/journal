@@ -1514,4 +1514,28 @@ body::before {
     .skeleton-line {
         height: 14px;
     }
+}
+
+.error-message {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1000;
+    text-align: center;
+    max-width: 90%;
+    width: 400px;
+}
+
+.error-message p {
+    margin: 0.5rem 0;
+}
+
+.error-message p:first-child {
+    font-weight: bold;
 } 

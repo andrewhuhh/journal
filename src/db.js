@@ -24,18 +24,27 @@ export async function saveUserData(userId, userData) {
  * Saves a journal entry to Firestore
  */
 export async function saveEntry(userId, entry) {
-    const entryRef = doc(collection(db, ENTRIES_COLLECTION));
-    const entryData = {
-        userId,
-        content: entry.content,
-        date: entry.date,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        images: entry.images || []
-    };
-    
-    await setDoc(entryRef, entryData);
-    return entryRef.id;
+    try {
+        const entryRef = doc(collection(db, ENTRIES_COLLECTION));
+        const entryData = {
+            userId,
+            content: entry.content,
+            date: entry.date,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            images: entry.images || [],
+            lastModified: serverTimestamp()
+        };
+        
+        await setDoc(entryRef, entryData);
+        return entryRef.id;
+    } catch (error) {
+        if (error.code === 'failed-precondition' || error.message?.includes('ERR_BLOCKED_BY_CLIENT')) {
+            console.error('Firestore connection blocked. This may be caused by an ad blocker or privacy extension.');
+            throw new Error('Database connection blocked. Please disable ad blocker for this site to enable syncing.');
+        }
+        throw error;
+    }
 }
 
 /**
@@ -129,4 +138,27 @@ export async function uploadImage(userId, file) {
 export async function deleteImage(imagePath) {
     const imageRef = ref(storage, imagePath);
     await deleteObject(imageRef);
+}
+
+export async function fetchAndMergeUpdates(lastSyncTime) {
+    try {
+        const q = query(collection(db, 'entries'), 
+            where('lastModified', '>', lastSyncTime));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot) {
+            throw new Error('Failed to fetch updates from Firestore');
+        }
+
+        return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+    } catch (error) {
+        if (error.code === 'failed-precondition' || error.message?.includes('ERR_BLOCKED_BY_CLIENT')) {
+            console.error('Firestore connection blocked. This may be caused by an ad blocker or privacy extension.');
+            throw new Error('Database connection blocked. Please disable ad blocker for this site to enable syncing.');
+        }
+        throw error;
+    }
 } 

@@ -28,7 +28,11 @@ export default defineConfig(({ mode }) => {
             vendor: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage']
           },
           assetFileNames: (assetInfo) => {
-            if (assetInfo.names.endsWith('.svg')) {
+            const info = assetInfo.names?.[0] || '';
+            if (info.endsWith('.svg')) {
+              return 'assets/[name][extname]';
+            }
+            if (info.endsWith('.css')) {
               return 'assets/[name][extname]';
             }
             return 'assets/[name]-[hash][extname]';
