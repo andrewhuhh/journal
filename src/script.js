@@ -32,6 +32,18 @@ const LOADING_STATES = {
 let lastGradientUpdate = 0;
 const GRADIENT_UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes
 
+// Add after IndexedDB setup constants
+const MONTHS = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+// Add after IndexedDB setup constants
+const DISPLAY_CONFIG = {
+    currentWeekOffset: 0, // 0 = current week, 1 = last week, etc.
+    sidebarPreviewItems: 10
+};
+
 function updateTimeBasedGradient() {
     const now = new Date();
     
@@ -348,63 +360,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const imageViewerImg = imageViewer?.querySelector('img');
     const imageViewerClose = imageViewer?.querySelector('.image-viewer-close');
     const deleteDialog = document.querySelector('#delete-dialog');
-
-    // Add this after DOM element selections
     const menuItems = document.querySelector('.menu-items');
-
-    // Add after DOM element selections
-    const mobileMenuToggle = document.querySelector('.mobile-menu-toggle');
     const menuContainer = document.querySelector('.menu-container');
     const menuOverlay = document.querySelector('.menu-overlay');
+    const mobileMenuToggle = document.querySelector('.mobile-menu-toggle');
+    const calendarButton = document.querySelector('.menu-item.calendar-button');
 
-    // Auth menu handling
-    if (authButton && authMenu) {
-        let signInAttemptInProgress = false;
-
-        const handleSignIn = async (e) => {
-            e.stopPropagation();
-            
-            if (!currentUser) {
-                // Prevent multiple sign-in attempts
-                if (signInAttemptInProgress) {
-                    console.log('Sign-in attempt already in progress');
-                    return;
-                }
-
-                // Sign in if not authenticated
-                try {
-                    signInAttemptInProgress = true;
-                    await signInWithGoogle();
-                } catch (error) {
-                    // Show error message if sign-in was cancelled
-                    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-                        authError.classList.add('active');
-                        setTimeout(() => {
-                            authError.classList.remove('active');
-                        }, 3000);
-                    }
-                } finally {
-                    signInAttemptInProgress = false;
-                }
-                return;
+    // Add calendar button click handler
+    if (calendarButton) {
+        calendarButton.addEventListener('click', () => {
+            // Close mobile menu if it's open
+            if (menuContainer && menuOverlay) {
+                menuContainer.classList.remove('active');
+                menuOverlay.classList.remove('active');
+                document.body.style.overflow = ''; // Restore scrolling
             }
             
-            // Only show menu if authenticated
-            const buttonRect = authButton.getBoundingClientRect();
-            authMenu.style.top = `${buttonRect.bottom + 8}px`;
-            authMenu.style.right = `${window.innerWidth - buttonRect.right}px`;
-            
-            authMenu.classList.toggle('active');
-        };
-
-        authButton.addEventListener('click', handleSignIn);
-        welcomeAuthButton?.addEventListener('click', handleSignIn);
-
-        // Close menu when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.auth-menu') && !e.target.closest('.auth-button')) {
-                authMenu.classList.remove('active');
-            }
+            createCalendarView();
         });
     }
 
@@ -482,22 +454,65 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Auth button click handler (for sign in only)
+    // Auth button click handlers
+    if (authButton) {
+        authButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            
+            if (currentUser) {
+                // Toggle menu if authenticated
+                const buttonRect = authButton.getBoundingClientRect();
+                authMenu.style.top = `${buttonRect.bottom + 8}px`;
+                authMenu.style.right = `${window.innerWidth - buttonRect.right}px`;
+                authMenu.classList.toggle('active');
+            } else {
+                // Sign in if not authenticated
+                try {
+                    await signInWithGoogle();
+                } catch (error) {
+                    // Show error message if sign-in was cancelled
+                    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+                        authError.classList.add('active');
+                        setTimeout(() => {
+                            authError.classList.remove('active');
+                        }, 3000);
+                    }
+                }
+            }
+        });
+    }
+
+    // Welcome auth button click handler
+    if (welcomeAuthButton) {
+        welcomeAuthButton.addEventListener('click', async () => {
+            try {
+                await signInWithGoogle();
+            } catch (error) {
+                // Show error message if sign-in was cancelled
+                if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+                    authError.classList.add('active');
+                    setTimeout(() => {
+                        authError.classList.remove('active');
+                    }, 3000);
+                }
+            }
+        });
+    }
+
+    // Close auth menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.auth-menu') && !e.target.closest('.auth-button')) {
+            authMenu.classList.remove('active');
+        }
+    });
+
+    // Sign out button click handler
     if (signOutButton) {
         signOutButton.addEventListener('click', async () => {
             await signOutUser();
             authMenu.classList.remove('active');
         });
     }
-
-    authButton.addEventListener('click', async (e) => {
-        if (currentUser) {
-            // Just toggle menu, don't sign out
-            return;
-        }
-        // Sign in if not authenticated
-        await signInWithGoogle();
-    });
 
     let entryToDelete = null;
 
@@ -575,17 +590,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Display all entries grouped by date
-    function displayAllEntries() {
+    function displayAllEntries(weekOffset = DISPLAY_CONFIG.currentWeekOffset) {
         entriesList.innerHTML = '';
         
         // First, sort all entries by date (newest first)
         journalEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
         
+        // Calculate week boundaries
+        const today = new Date();
+        const startOfCurrentWeek = new Date(today);
+        startOfCurrentWeek.setHours(0, 0, 0, 0);
+        startOfCurrentWeek.setDate(today.getDate() - today.getDay()); // Start of current week (Sunday)
+        
+        const startOfTargetWeek = new Date(startOfCurrentWeek);
+        startOfTargetWeek.setDate(startOfCurrentWeek.getDate() - (7 * weekOffset));
+        
+        const endOfTargetWeek = new Date(startOfTargetWeek);
+        endOfTargetWeek.setDate(startOfTargetWeek.getDate() + 6);
+        endOfTargetWeek.setHours(23, 59, 59, 999);
+        
+        // Filter entries for the target week
+        const weekEntries = journalEntries.filter(entry => {
+            const entryDate = new Date(entry.date);
+            return entryDate >= startOfTargetWeek && entryDate <= endOfTargetWeek;
+        });
+        
         // Group entries by date
         const groupedEntries = {};
-        const today = formatDateKey(new Date());
+        const todayKey = formatDateKey(new Date());
         
-        journalEntries.forEach(entry => {
+        weekEntries.forEach(entry => {
             const dateKey = formatDateKey(new Date(entry.date));
             if (!groupedEntries[dateKey]) {
                 groupedEntries[dateKey] = [];
@@ -593,12 +627,16 @@ document.addEventListener('DOMContentLoaded', () => {
             groupedEntries[dateKey].push(entry);
         });
         
-        // Sort entries within each group
-        Object.entries(groupedEntries).forEach(([dateKey, entries]) => {
+        // Sort dates in descending order
+        const sortedDates = Object.keys(groupedEntries).sort((a, b) => new Date(b) - new Date(a));
+        
+        // Add entries for each date
+        sortedDates.forEach(dateKey => {
+            const entries = groupedEntries[dateKey];
             const dateGroup = getOrCreateDateGroup(new Date(entries[0].date));
             
             // Sort entries based on whether it's today or not
-            if (dateKey === today) {
+            if (dateKey === todayKey) {
                 // Today's entries: newest first
                 entries.sort((a, b) => new Date(b.date) - new Date(a.date));
             } else {
@@ -615,6 +653,94 @@ document.addEventListener('DOMContentLoaded', () => {
                 dateGroup.appendChild(entryElement);
             });
         });
+        
+        // Add week navigation after today's group or at the top if no today's group
+        const weekNav = document.createElement('div');
+        weekNav.className = 'pagination-controls week-nav';
+        
+        // Format date range for display
+        const formatWeekDisplay = (date) => {
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+            });
+        };
+        
+        const weekDisplay = weekOffset === 0 
+            ? 'This Week' 
+            : weekOffset === 1 
+                ? 'Last Week'
+                : `${formatWeekDisplay(startOfTargetWeek)} - ${formatWeekDisplay(endOfTargetWeek)}`;
+        
+        weekNav.innerHTML = `
+            <button class="pagination-button prev" ${weekOffset >= 52 ? 'disabled' : ''}>
+                <span class="material-icons-outlined">chevron_left</span>
+                Previous Week
+            </button>
+            <span class="pagination-info">${weekDisplay}</span>
+            <button class="pagination-button next" ${weekOffset === 0 ? 'disabled' : ''}>
+                Next Week
+                <span class="material-icons-outlined">chevron_right</span>
+            </button>
+        `;
+        
+        // Add click handlers for week navigation
+        const prevButton = weekNav.querySelector('.prev');
+        const nextButton = weekNav.querySelector('.next');
+        
+        prevButton.addEventListener('click', () => {
+            if (weekOffset < 52) { // Limit to one year in the past
+                DISPLAY_CONFIG.currentWeekOffset = weekOffset + 1;
+                displayAllEntries(DISPLAY_CONFIG.currentWeekOffset);
+                window.scrollTo(0, 0);
+            }
+        });
+        
+        nextButton.addEventListener('click', () => {
+            if (weekOffset > 0) {
+                DISPLAY_CONFIG.currentWeekOffset = weekOffset - 1;
+                displayAllEntries(DISPLAY_CONFIG.currentWeekOffset);
+                window.scrollTo(0, 0);
+            }
+        });
+        
+        // Insert week navigation after today's group or at the top
+        const todayGroup = document.querySelector(`.date-group[data-date="${todayKey}"]`);
+        if (todayGroup) {
+            todayGroup.after(weekNav);
+        } else {
+            entriesList.prepend(weekNav);
+        }
+
+        // After filtering entries for the current week
+        if (weekEntries.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'empty-week-state';
+            
+            // Format the week range for display
+            const weekStart = new Date();
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay() + (DISPLAY_CONFIG.currentWeekOffset * 7));
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6);
+            
+            const formatDate = (date) => {
+                return date.toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric',
+                    year: weekStart.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                });
+            };
+            
+            const weekRange = `${formatDate(weekStart)} - ${formatDate(weekEnd)}`;
+            
+            emptyState.innerHTML = `
+                <h3>No entries this week</h3>
+                <p>Start writing to see your entries appear here.</p>
+            `;
+            
+            entriesList.appendChild(emptyState);
+        }
     }
 
     // Update shortcut hint based on OS
@@ -837,7 +963,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     Edit
                 </div>
                 <div class="entry-action-item move">
-                    <span class="material-icons-outlined">calendar_today</span>
+                    <span class="material-icons-outlined">edit_calendar</span>
                     Move
                 </div>
                 <div class="entry-action-item delete">
@@ -1492,8 +1618,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add this function after loadEntries()
     function updateJournalHistory() {
+        // Save the calendar button if it exists
+        const calendarButton = menuItems.querySelector('.calendar-button');
+        
         // Clear existing history
         menuItems.innerHTML = '';
+        
+        // Restore the calendar button
+        if (calendarButton) {
+            menuItems.appendChild(calendarButton);
+        }
         
         // Group entries by date
         const groupedEntries = {};
@@ -1503,7 +1637,10 @@ document.addEventListener('DOMContentLoaded', () => {
             year: 'numeric'
         });
         
-        journalEntries.forEach(entry => {
+        // Only process the most recent entries for the sidebar
+        const recentEntries = journalEntries.slice(0, DISPLAY_CONFIG.sidebarPreviewItems);
+        
+        recentEntries.forEach(entry => {
             const date = new Date(entry.date);
             const dateKey = date.toLocaleDateString('en-US', {
                 month: 'short',
@@ -1565,20 +1702,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Add click handler to scroll to entry
                 historyItem.addEventListener('click', () => {
-                    const dateGroup = document.querySelector(`.date-group[data-date="${formatDateKey(new Date(entry.date))}"]`);
-                    if (dateGroup) {
-                        // Close mobile menu if it's open
-                        if (menuContainer && menuOverlay) {
-                            menuContainer.classList.remove('active');
-                            menuOverlay.classList.remove('active');
-                            document.body.style.overflow = ''; // Restore scrolling
-                        }
+                    const entryDate = new Date(entry.date);
+                    
+                    // Calculate which week this entry belongs to
+                    const today = new Date();
+                    const startOfCurrentWeek = new Date(today);
+                    startOfCurrentWeek.setHours(0, 0, 0, 0);
+                    startOfCurrentWeek.setDate(today.getDate() - today.getDay()); // Start of current week (Sunday)
+                    
+                    const entryWeekStart = new Date(entryDate);
+                    entryWeekStart.setHours(0, 0, 0, 0);
+                    entryWeekStart.setDate(entryDate.getDate() - entryDate.getDay()); // Start of entry's week
+                    
+                    // Calculate the difference in weeks
+                    const diffWeeks = Math.round((startOfCurrentWeek - entryWeekStart) / (7 * 24 * 60 * 60 * 1000));
+                    
+                    // If entry is in a different week, update the week offset and redisplay
+                    if (diffWeeks !== DISPLAY_CONFIG.currentWeekOffset) {
+                        DISPLAY_CONFIG.currentWeekOffset = diffWeeks;
+                        displayAllEntries(diffWeeks);
+                    }
+                    
+                    // Close mobile menu if it's open
+                    if (menuContainer && menuOverlay) {
+                        menuContainer.classList.remove('active');
+                        menuOverlay.classList.remove('active');
+                        document.body.style.overflow = ''; // Restore scrolling
+                    }
 
+                    // Now find and scroll to the entry
+                    const dateGroup = document.querySelector(`.date-group[data-date="${formatDateKey(entryDate)}"]`);
+                    if (dateGroup) {
                         dateGroup.scrollIntoView({ behavior: 'smooth' });
                         // Ensure the group is expanded
                         dateGroup.classList.remove('collapsed');
                         const entriesContainer = dateGroup.querySelector('.date-group-entries');
-                        entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
+                        if (entriesContainer) {
+                            entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
+                        }
                         
                         // Find and highlight the specific entry
                         const entryElement = Array.from(dateGroup.querySelectorAll('.entry')).find(el => {
@@ -1596,7 +1757,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             historyItem.classList.add('active');
                             
                             // Ensure the entry is visible
-                            entryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            setTimeout(() => {
+                                entryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }, 100); // Small delay to ensure the week view has updated
                         }
                     }
                 });
@@ -1756,4 +1919,154 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Update gradient every minute
     setInterval(updateTimeBasedGradient, 60000);
+
+    // Add after updateJournalHistory function
+    function createCalendarView() {
+        const calendarDialog = document.createElement('div');
+        calendarDialog.className = 'dialog-overlay calendar-overlay';
+        
+        const currentDate = new Date();
+        let currentMonth = currentDate.getMonth();
+        let currentYear = currentDate.getFullYear();
+        
+        function generateCalendar(month, year) {
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startingDay = firstDay.getDay();
+            const totalDays = lastDay.getDate();
+            
+            // Get entries for the month
+            const entriesByDate = {};
+            journalEntries.forEach(entry => {
+                const entryDate = new Date(entry.date);
+                if (entryDate.getMonth() === month && entryDate.getFullYear() === year) {
+                    const dateKey = entryDate.getDate();
+                    if (!entriesByDate[dateKey]) {
+                        entriesByDate[dateKey] = [];
+                    }
+                    entriesByDate[dateKey].push(entry);
+                }
+            });
+            
+            let calendarHTML = `
+                <div class="dialog calendar-dialog">
+                    <div class="calendar-header">
+                        <button class="calendar-nav prev">
+                            <span class="material-icons-outlined">chevron_left</span>
+                        </button>
+                        <h2>${MONTHS[month]} ${year}</h2>
+                        <button class="calendar-nav next">
+                            <span class="material-icons-outlined">chevron_right</span>
+                        </button>
+                    </div>
+                    <div class="calendar-body">
+                        <div class="calendar-weekdays">
+                            <div>Sun</div>
+                            <div>Mon</div>
+                            <div>Tue</div>
+                            <div>Wed</div>
+                            <div>Thu</div>
+                            <div>Fri</div>
+                            <div>Sat</div>
+                        </div>
+                        <div class="calendar-days">
+            `;
+            
+            // Add empty cells for days before the first day of the month
+            for (let i = 0; i < startingDay; i++) {
+                calendarHTML += '<div class="calendar-day empty"></div>';
+            }
+            
+            // Add days of the month
+            for (let day = 1; day <= totalDays; day++) {
+                const entries = entriesByDate[day] || [];
+                const isToday = day === currentDate.getDate() && 
+                               month === currentDate.getMonth() && 
+                               year === currentDate.getFullYear();
+                
+                calendarHTML += `
+                    <div class="calendar-day${isToday ? ' today' : ''}${entries.length ? ' has-entries' : ''}" data-date="${year}-${month + 1}-${day}">
+                        <span class="day-number">${day}</span>
+                        ${entries.length ? `<span class="entry-count">${entries.length}</span>` : ''}
+                    </div>
+                `;
+            }
+            
+            calendarHTML += `
+                        </div>
+                    </div>
+                    <div class="dialog-actions">
+                        <button class="dialog-button close">Close</button>
+                    </div>
+                </div>
+            `;
+            
+            calendarDialog.innerHTML = calendarHTML;
+            
+            // Add event listeners
+            const prevButton = calendarDialog.querySelector('.calendar-nav.prev');
+            const nextButton = calendarDialog.querySelector('.calendar-nav.next');
+            const closeButton = calendarDialog.querySelector('.dialog-button.close');
+            
+            prevButton.onclick = () => {
+                if (month === 0) {
+                    month = 11;
+                    year--;
+                } else {
+                    month--;
+                }
+                generateCalendar(month, year);
+            };
+            
+            nextButton.onclick = () => {
+                if (month === 11) {
+                    month = 0;
+                    year++;
+                } else {
+                    month++;
+                }
+                generateCalendar(month, year);
+            };
+            
+            closeButton.onclick = () => {
+                calendarDialog.remove();
+            };
+            
+            // Add click handlers for days with entries
+            calendarDialog.querySelectorAll('.calendar-day.has-entries').forEach(dayElement => {
+                dayElement.addEventListener('click', () => {
+                    const [year, month, day] = dayElement.dataset.date.split('-').map(Number);
+                    const date = new Date(year, month - 1, day);
+                    const dateKey = formatDateKey(date);
+                    
+                    const dateGroup = document.querySelector(`.date-group[data-date="${dateKey}"]`);
+                    if (dateGroup) {
+                        dateGroup.scrollIntoView({ behavior: 'smooth' });
+                        // Ensure the group is expanded
+                        dateGroup.classList.remove('collapsed');
+                        const entriesContainer = dateGroup.querySelector('.date-group-entries');
+                        entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
+                        
+                        // Close the calendar
+                        calendarDialog.remove();
+                    }
+                });
+            });
+        }
+        
+        generateCalendar(currentMonth, currentYear);
+        document.body.appendChild(calendarDialog);
+        
+        // Close when clicking outside
+        calendarDialog.addEventListener('click', (e) => {
+            if (e.target === calendarDialog) {
+                calendarDialog.remove();
+            }
+        });
+        
+        // Show the dialog
+        requestAnimationFrame(() => {
+            calendarDialog.classList.add('active');
+        });
+    }
 }); 
