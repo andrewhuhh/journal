@@ -942,6 +942,34 @@ body.not-authenticated::after {
     visibility: hidden;
 }
 
+.google-auth-button {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    border-radius: 50px;
+    z-index: 10;
+    background: var(--flat-color);
+    color: var(--text-primary);
+    font-family: "Google Sans", Roboto, sans-serif;
+    font-weight: 500;
+    font-size: 16px;
+}
+
+.google-auth-button:hover {
+    box-shadow: 0 8px 16px var(--shadow-color);
+    transform: translateY(-1px);
+}
+
+.google-auth-button img {
+    width: 24px;
+    height: 24px;
+    border-radius: 0;
+}
+
 .auth-button {
     display: flex;
     align-items: center;
@@ -952,7 +980,6 @@ body.not-authenticated::after {
     border: none;
     border-radius: 50px;
     height: 40px;
-    width: 40px;
     z-index: 10;
 }
 
@@ -961,10 +988,32 @@ body.not-authenticated::after {
     height: 40px;
     border-radius: 50%;
     object-fit: cover;
+    transition: transform 0.2s ease;
 }
 
 .auth-button:hover {
     box-shadow: 0 8px 16px var(--shadow-color);
+}
+
+/* Add new placeholder avatar styles */
+.avatar-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent-light);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    font-size: 16px;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+}
+
+.auth-button:hover .avatar-placeholder {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px var(--shadow-color);
 }
 
 .auth-button.sign-in {
@@ -1061,7 +1110,7 @@ body.not-authenticated::after {
     transition: all 0.3s ease;
     overflow-y: auto;
     max-height: 100vh;
-    padding: 12px 0;
+    padding: 12px 8px;
 }
 
 /* Desktop styles */
@@ -1070,7 +1119,7 @@ body.not-authenticated::after {
         left: 0;
         top: 0;
         height: 100vh;
-        width: 280px;
+        width: 320px;
         border-right: 1px solid var(--border-color);
         display: flex;
         flex-direction: column;
@@ -1090,55 +1139,18 @@ body.not-authenticated::after {
         left: 0;
         top: 0;
         height: 100vh;
-        width: 240px;
+        width: 280px;
         border-right: 1px solid var(--border-color);
         display: flex;
         flex-direction: column;
     }
 
     .container {
-        margin-left: 260px;
+        margin-left: 300px;
         margin-right: 20px;
         width: auto;
         max-width: calc(100% - 260px);
     }
-}
-
-/* Menu items */
-.menu-items {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 0 8px;
-}
-
-.menu-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px 16px;
-    color: var(--text-primary);
-    font-size: 0.95em;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border-radius: 8px;
-    opacity: 0.8;
-}
-
-.menu-item:hover {
-    background: var(--accent-light);
-    opacity: 1;
-}
-
-.menu-item.active {
-    background: var(--accent-light);
-    color: var(--accent-color);
-    opacity: 1;
-}
-
-.menu-item .material-icons-outlined {
-    font-size: 20px;
-    margin-top: 2px;
 }
 
 /* Hide editor when not authenticated */
@@ -1180,6 +1192,13 @@ body.not-authenticated::after {
 }
 
 /* Update menu item styles */
+.menu-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 4px;
+}
+
 .menu-item {
     display: flex;
     align-items: flex-start;
@@ -1193,14 +1212,17 @@ body.not-authenticated::after {
     opacity: 0.8;
 }
 
+.menu-item .material-icons-outlined {
+    font-size: 20px;
+    margin-top: 2px;
+}
+
 .menu-item:hover {
     background: var(--accent-light);
     opacity: 1;
 }
 
 .menu-item.active {
-    background: var(--accent-light);
-    color: var(--accent-color);
     opacity: 1;
 }
 
@@ -1878,6 +1900,19 @@ body.not-authenticated .welcome-section {
 .calendar-day.today .entry-count {
     background: white;
     color: var(--primary-color);
+}
+
+.menu-item.history-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    background-image: linear-gradient(to bottom, var(--accent-light), transparent);
+    margin: 8px 4px;
+    border-radius: 12px;
+    pointer-events: none;
 }
 
 /* Calendar button styles */
