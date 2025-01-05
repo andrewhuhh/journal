@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
       outDir: '../dist',
       sourcemap: true,
       assetsDir: 'assets',
+      emptyOutDir: true
     },
     root: 'src',
     envDir: '..',
