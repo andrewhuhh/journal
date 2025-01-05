@@ -59,6 +59,10 @@ body:not(.not-authenticated)::after {
 body.not-authenticated::after {
     opacity: 1;
     filter: none;
+    background: var(--background-url);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
 }
 
 /* Update welcome section text colors for better contrast */
@@ -68,8 +72,8 @@ body.not-authenticated::after {
 }
 
 .not-authenticated .welcome-content p {
-    color: rgba(255, 255, 255, 0.9);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    color: white;
+    text-shadow: 0 2px 4px rgba(255, 255, 255, 0.2);
 }
 
 .container {
