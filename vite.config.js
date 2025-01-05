@@ -26,10 +26,15 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             vendor: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage']
+          },
+          assetFileNames: (assetInfo) => {
+            if (assetInfo.names.endsWith('.svg')) {
+              return 'assets/[name][extname]';
+            }
+            return 'assets/[name]-[hash][extname]';
           }
         }
-      },
-      assetsInclude: ['**/*.svg', '**/*.webp']
+      }
     },
     root: 'src',
     envDir: '..',
