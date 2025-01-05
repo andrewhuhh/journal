@@ -469,7 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentDate.setMinutes(parseInt(minutes));
             
             const timeString = `${hour.toString().padStart(2, '0')}:${minutes}`;
-            const dateString = currentDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+            const dateString = currentDate.toLocaleDateString('en-CA'); // YYYY-MM-DD format using Canadian locale
             
             // Create move dialog
             const moveDialog = document.createElement('div');
