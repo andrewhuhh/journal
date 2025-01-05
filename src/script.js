@@ -9,6 +9,7 @@ import {
     deleteImage 
 } from './db.js';
 import { TIME_GRADIENTS } from './gradients.js';
+import { getRandomBackground } from './backgrounds.js';
 
 // Add IndexedDB setup
 const DB_NAME = 'journalCache';
@@ -336,6 +337,9 @@ async function getLastSyncTime(userId) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Set initial random background
+    document.documentElement.style.setProperty('--background-url', `url('${getRandomBackground()}')`);
+
     // Auth elements
     const container = document.querySelector('.container');
     const authHeader = document.querySelector('.auth-header');
@@ -1731,9 +1735,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     // Now find and scroll to the entry
-                    const dateGroup = document.querySelector(`.date-group[data-date="${formatDateKey(entryDate)}"]`);
+                    const dateKey = formatDateKey(entryDate);
+                    const dateGroup = document.querySelector(`.date-group[data-date="${dateKey}"]`);
                     if (dateGroup) {
-                        dateGroup.scrollIntoView({ behavior: 'smooth' });
                         // Ensure the group is expanded
                         dateGroup.classList.remove('collapsed');
                         const entriesContainer = dateGroup.querySelector('.date-group-entries');

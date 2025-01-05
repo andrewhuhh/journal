@@ -23,6 +23,7 @@
     --bg-hover: rgba(0, 0, 0, 0.02);
     --shadow-sm: 0 2px 8px var(--shadow-color);
     --current-gradient: linear-gradient(to bottom, #b7eaff 0%, #94dfff 100%);
+    --background-url: none;
 }
 
 body {
@@ -42,8 +43,8 @@ body::after {
     left: 0;
     width: 100%;
     height: 100vh;
-    background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.4)),
-                url('https://images.unsplash.com/photo-1542480118439-cbba7870f6f7?q=80&w=1976&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
+    background: linear-gradient(transparent, var(--flat-color)),
+                var(--background-url);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -1974,6 +1975,8 @@ body.not-authenticated .welcome-section {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
+    backdrop-filter: blur(var(--blur-strength));
+    -webkit-backdrop-filter: blur(var(--blur-strength));
 }
 
 .pagination-button:hover:not(:disabled) {
@@ -1988,35 +1991,9 @@ body.not-authenticated .welcome-section {
     cursor: not-allowed;
 }
 
-.pagination-info {
-    color: var(--text-secondary);
-    font-size: 0.95em;
-}
-
 .pagination-button .material-icons-outlined {
     font-size: 20px;
 }
-
-/* Update mobile styles for pagination */
-@media (max-width: 768px) {
-    .pagination-controls {
-        margin: 24px 0;
-        padding: 12px;
-        flex-wrap: wrap;
-    }
-
-    .pagination-button {
-        padding: 10px 16px;
-        font-size: 0.9em;
-    }
-
-    .pagination-info {
-        width: 100%;
-        text-align: center;
-        order: -1;
-        margin-bottom: 12px;
-    }
-} 
 
 /* Update pagination styles for week navigation */
 .pagination-controls.week-nav {
@@ -2065,6 +2042,7 @@ body.not-authenticated .welcome-section {
     font-size: 1em;
     font-weight: 500;
     padding: 0 16px;
+    mix-blend-mode: difference;
 }
 
 .pagination-button .material-icons-outlined {
