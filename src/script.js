@@ -2036,19 +2036,45 @@ document.addEventListener('DOMContentLoaded', () => {
             calendarDialog.querySelectorAll('.calendar-day.has-entries').forEach(dayElement => {
                 dayElement.addEventListener('click', () => {
                     const [year, month, day] = dayElement.dataset.date.split('-').map(Number);
-                    const date = new Date(year, month - 1, day);
-                    const dateKey = formatDateKey(date);
+                    const selectedDate = new Date(year, month - 1, day);
                     
+                    // Calculate which week this date belongs to
+                    const today = new Date();
+                    const startOfCurrentWeek = new Date(today);
+                    startOfCurrentWeek.setHours(0, 0, 0, 0);
+                    startOfCurrentWeek.setDate(today.getDate() - today.getDay()); // Start of current week (Sunday)
+                    
+                    const selectedWeekStart = new Date(selectedDate);
+                    selectedWeekStart.setHours(0, 0, 0, 0);
+                    selectedWeekStart.setDate(selectedDate.getDate() - selectedDate.getDay()); // Start of selected date's week
+                    
+                    // Calculate the difference in weeks
+                    const diffWeeks = Math.round((startOfCurrentWeek - selectedWeekStart) / (7 * 24 * 60 * 60 * 1000));
+                    
+                    // Update the week offset and redisplay
+                    if (diffWeeks !== DISPLAY_CONFIG.currentWeekOffset) {
+                        DISPLAY_CONFIG.currentWeekOffset = diffWeeks;
+                        displayAllEntries(diffWeeks);
+                    }
+                    
+                    // Close the calendar dialog
+                    calendarDialog.remove();
+                    
+                    // Find and scroll to the date group
+                    const dateKey = formatDateKey(selectedDate);
                     const dateGroup = document.querySelector(`.date-group[data-date="${dateKey}"]`);
                     if (dateGroup) {
-                        dateGroup.scrollIntoView({ behavior: 'smooth' });
                         // Ensure the group is expanded
                         dateGroup.classList.remove('collapsed');
                         const entriesContainer = dateGroup.querySelector('.date-group-entries');
-                        entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
+                        if (entriesContainer) {
+                            entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
+                        }
                         
-                        // Close the calendar
-                        calendarDialog.remove();
+                        // Scroll to the date group
+                        setTimeout(() => {
+                            dateGroup.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 100); // Small delay to ensure the week view has updated
                     }
                 });
             });

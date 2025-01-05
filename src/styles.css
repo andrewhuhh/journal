@@ -1061,6 +1061,7 @@ body.not-authenticated::after {
     transition: all 0.3s ease;
     overflow-y: auto;
     max-height: 100vh;
+    padding: 12px 0;
 }
 
 /* Desktop styles */
@@ -1071,7 +1072,6 @@ body.not-authenticated::after {
         height: 100vh;
         width: 280px;
         border-right: 1px solid var(--border-color);
-        padding: 24px 0;
         display: flex;
         flex-direction: column;
     }
@@ -1092,7 +1092,6 @@ body.not-authenticated::after {
         height: 100vh;
         width: 240px;
         border-right: 1px solid var(--border-color);
-        padding: 24px 0;
         display: flex;
         flex-direction: column;
     }
@@ -1102,18 +1101,6 @@ body.not-authenticated::after {
         margin-right: 20px;
         width: auto;
         max-width: calc(100% - 260px);
-    }
-}
-
-/* Mobile styles */
-@media (max-width: 768px) {
-    .menu-container {
-        display: none;
-    }
-
-    .container {
-        margin: 0 auto;
-        padding-bottom: 100px;
     }
 }
 
@@ -1220,13 +1207,6 @@ body.not-authenticated::after {
 .menu-item .material-icons-outlined {
     font-size: 20px;
     margin-top: 2px;
-}
-
-/* Mobile menu items */
-@media (max-width: 768px) {
-    .menu-container {
-        display: none; /* Hide sidebar on mobile for now */
-    }
 }
 
 .menu-item.date-header {
@@ -1622,7 +1602,7 @@ body.not-authenticated::after {
 
 .auth-header {
     position: fixed;
-    z-index: 900;
+    z-index: 400;
     inset: 0 0 auto 0;
     height: 120px;
     pointer-events: all;
@@ -1887,7 +1867,7 @@ body.not-authenticated .welcome-section {
 }
 
 .calendar-day .day-number {
-    font-size: 1.1em;
+    font-size: 16px;
     margin-bottom: 4px;
 }
 
@@ -2004,20 +1984,12 @@ body.not-authenticated .welcome-section {
 .pagination-controls.week-nav {
     margin: 24px 0;
     padding: 16px;
-
-    /* background: var(--surface-color);
-    border: 1px solid var(--border-color); */
-    /* backdrop-filter: blur(var(--blur-strength));
-    -webkit-backdrop-filter: blur(var(--blur-strength)); */
-
     background: transparent;
     border: none;
-
-
     border-radius: 16px;
     position: sticky;
     top: 5px;
-    z-index: 1000;
+    z-index: 900;
     width: 100%;
     transition: max-width 0.3s ease, margin 0.3s ease;
 }
