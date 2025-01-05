@@ -431,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // User is signed out
             container?.classList.add('not-authenticated');
             authButton.innerHTML = `
-                <img src="./assets/google-icon.svg" alt="Google">
+                <img src="/journal/assets/google-icon.svg" alt="Google">
                 <span>Sign in with Google</span>
             `;
             authButton.classList.add('sign-in');
@@ -1733,42 +1733,4 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Update gradient every minute
     setInterval(updateTimeBasedGradient, 60000);
-
-    async function handleDatabaseError(error) {
-        console.error('Database error:', error);
-        
-        if (error.message?.includes('Please disable ad blocker')) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.innerHTML = `
-                <p>⚠️ Database connection blocked</p>
-                <p>Please disable your ad blocker or privacy extensions for this site to enable syncing.</p>
-                <p>Your entries are still saved locally.</p>
-            `;
-            document.body.insertBefore(errorDiv, document.body.firstChild);
-        }
-    }
-
-    // Update the sync function to use this error handler
-    async function syncWithFirebase() {
-        try {
-            const lastSync = localStorage.getItem('lastSync') || 0;
-            const updates = await fetchAndMergeUpdates(lastSync);
-            // ... rest of sync logic ...
-        } catch (error) {
-            await handleDatabaseError(error);
-        }
-    }
-
-    // Update save function to use error handler
-    async function saveEntry(entry) {
-        try {
-            await db.saveEntry(entry);
-            // ... rest of save logic ...
-        } catch (error) {
-            await handleDatabaseError(error);
-            // Still save locally even if Firebase fails
-            saveToLocalStorage(entry);
-        }
-    }
 }); 
