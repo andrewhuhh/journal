@@ -95,7 +95,7 @@ body.not-authenticated::after {
     box-shadow: none;
     padding: 0;
     margin-bottom: 48px;
-    margin-top: 220px;
+    margin-top: 120px;
 }
 
 .entry-editor:hover {
@@ -105,7 +105,7 @@ body.not-authenticated::after {
 
 .entry-input {
     width: 100%;
-    min-height: 150px;
+    min-height: 160px;
     background: var(--surface-color);
     border: 1px solid var(--border-color);
     border-radius: 16px;
@@ -122,6 +122,7 @@ body.not-authenticated::after {
 .entry-input:focus {
     outline: none;
     background: var(--flat-color);
+    min-height: 200px;
     /* border-color: var(--surface-color); */
     box-shadow: 0 8px 24px var(--shadow-color);
 }
@@ -847,7 +848,7 @@ body.not-authenticated::after {
     }
 
     .entry-input {
-        min-height: 120px;
+        min-height: 240px;
         padding: 16px;
         font-size: 16px;
         border-radius: 12px;
@@ -900,8 +901,8 @@ body.not-authenticated::after {
     }
 
     .entry-editor {
-        margin-bottom: 120px;
-        margin-top: 120px;
+        margin-bottom: 48px;
+        margin-top: 90px;
     }
 
     .progress-text {

@@ -79,31 +79,47 @@ export async function deleteEntry(entryId) {
  * @param {Date} [lastSync] - Optional timestamp to fetch only entries modified since then
  */
 export async function getUserEntries(userId, lastSync = null) {
-    const entriesRef = collection(db, ENTRIES_COLLECTION);
-    let q = query(
-        entriesRef,
-        where('userId', '==', userId),
-        orderBy('updatedAt', 'desc')
-    );
-
-    // If lastSync provided, only get entries updated since then
-    if (lastSync) {
-        q = query(
+    try {
+        console.log('Fetching entries for user:', userId, 'since:', lastSync);
+        const entriesRef = collection(db, ENTRIES_COLLECTION);
+        let q = query(
             entriesRef,
             where('userId', '==', userId),
-            where('updatedAt', '>', lastSync),
-            orderBy('updatedAt', 'desc')
+            orderBy('date', 'desc')  // Changed from updatedAt to date for primary sorting
         );
+
+        // If lastSync provided, add the timestamp filter
+        if (lastSync) {
+            q = query(
+                entriesRef,
+                where('userId', '==', userId),
+                where('updatedAt', '>', lastSync),
+                orderBy('updatedAt', 'desc'),
+                orderBy('date', 'desc')
+            );
+        }
+        
+        const querySnapshot = await getDocs(q);
+        console.log('Retrieved', querySnapshot.size, 'entries from Firestore');
+        
+        const entries = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                date: data.date?.toDate() || new Date(), // Handle potential null dates
+                createdAt: data.createdAt?.toDate(),
+                updatedAt: data.updatedAt?.toDate(),
+                images: data.images || [] // Ensure images array exists
+            };
+        });
+        
+        console.log('Processed entries:', entries.length);
+        return entries;
+    } catch (error) {
+        console.error('Error fetching user entries:', error);
+        throw error; // Re-throw to handle in the UI layer
     }
-    
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().date.toDate(), // Convert Firestore Timestamp to JS Date
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate()
-    }));
 }
 
 /**

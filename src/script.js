@@ -19,7 +19,7 @@ const METADATA_STORE = 'metadata';
 // Add after IndexedDB setup constants
 const DEBUG = true;
 const CACHE_CONFIG = {
-    maxAge: 5 * 60 * 1000, // 5 minutes
+    maxAge: 24 * 60 * 60 * 1000, // Increase to 24 hours for better persistence
     staleWhileRevalidate: true
 };
 
@@ -118,22 +118,32 @@ async function initializeDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => {
+            log('Error opening IndexedDB:', request.error);
+            reject(request.error);
+        };
+        
+        request.onsuccess = () => {
+            log('Successfully opened IndexedDB');
+            resolve(request.result);
+        };
 
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
+            log('Upgrading IndexedDB schema');
             
             // Create entries store with index on userId
             if (!db.objectStoreNames.contains(ENTRIES_STORE)) {
                 const entriesStore = db.createObjectStore(ENTRIES_STORE, { keyPath: 'id' });
                 entriesStore.createIndex('userId', 'userId', { unique: false });
                 entriesStore.createIndex('date', 'date', { unique: false });
+                log('Created entries store');
             }
 
             // Create metadata store for last sync time
             if (!db.objectStoreNames.contains(METADATA_STORE)) {
                 const metadataStore = db.createObjectStore(METADATA_STORE, { keyPath: 'key' });
+                log('Created metadata store');
             }
         };
     });
@@ -144,48 +154,53 @@ async function getFromCache(userId) {
     const startTime = performance.now();
     log('Attempting to load from cache for user:', userId);
     
-    const db = await initializeDB();
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([ENTRIES_STORE, METADATA_STORE], 'readonly');
-        const store = transaction.objectStore(ENTRIES_STORE);
-        const metadataStore = transaction.objectStore(METADATA_STORE);
-        const index = store.index('userId');
+    try {
+        const db = await initializeDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([ENTRIES_STORE, METADATA_STORE], 'readonly');
+            const store = transaction.objectStore(ENTRIES_STORE);
+            const metadataStore = transaction.objectStore(METADATA_STORE);
+            const index = store.index('userId');
 
-        // Get last sync time first
-        const syncRequest = metadataStore.get(`lastSync_${userId}`);
-        syncRequest.onsuccess = () => {
-            const lastSync = syncRequest.result?.timestamp;
-            const now = Date.now();
-            const isCacheValid = lastSync && (now - new Date(lastSync).getTime()) < CACHE_CONFIG.maxAge;
+            // Get last sync time first
+            const syncRequest = metadataStore.get(`lastSync_${userId}`);
+            syncRequest.onsuccess = () => {
+                const lastSync = syncRequest.result?.timestamp;
+                const now = Date.now();
+                const isCacheValid = lastSync && (now - new Date(lastSync).getTime()) < CACHE_CONFIG.maxAge;
 
-            if (!isCacheValid && !CACHE_CONFIG.staleWhileRevalidate) {
-                log('Cache expired');
-                resolve([]);
-                return;
-            }
+                if (!isCacheValid && !CACHE_CONFIG.staleWhileRevalidate) {
+                    log('Cache expired and staleWhileRevalidate disabled');
+                    resolve({ entries: [], isStale: true });
+                    return;
+                }
 
-            const request = index.getAll(userId);
-            request.onerror = () => {
-                log('Cache read error:', request.error);
-                reject(request.error);
+                const request = index.getAll(userId);
+                request.onerror = () => {
+                    log('Cache read error:', request.error);
+                    reject(request.error);
+                };
+                
+                request.onsuccess = () => {
+                    const entries = request.result.map(entry => ({
+                        ...entry,
+                        date: new Date(entry.date)
+                    }));
+                    logPerformance('Cache Read', startTime);
+                    log(`Found ${entries.length} entries in cache${!isCacheValid ? ' (stale)' : ''}`);
+                    resolve({ entries, isStale: !isCacheValid });
+                };
             };
-            
-            request.onsuccess = () => {
-                const entries = request.result.map(entry => ({
-                    ...entry,
-                    date: new Date(entry.date)
-                }));
-                logPerformance('Cache Read', startTime);
-                log(`Found ${entries.length} entries in cache${!isCacheValid ? ' (stale)' : ''}`);
-                resolve({ entries, isStale: !isCacheValid });
-            };
-        };
 
-        syncRequest.onerror = () => {
-            log('Error getting last sync time:', syncRequest.error);
-            reject(syncRequest.error);
-        };
-    });
+            syncRequest.onerror = () => {
+                log('Error getting last sync time:', syncRequest.error);
+                reject(syncRequest.error);
+            };
+        });
+    } catch (error) {
+        log('Error accessing cache:', error);
+        return { entries: [], isStale: true };
+    }
 }
 
 async function updateCache(userId, entries) {
@@ -1643,49 +1658,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add new function to handle background updates
     async function fetchAndMergeUpdates(userId, cachedEntries) {
-        const lastSync = await getLastSyncTime(userId);
-        log('Last sync time:', lastSync ? lastSync.toISOString() : 'never');
+        try {
+            const lastSync = await getLastSyncTime(userId);
+            log('Last sync time:', lastSync ? lastSync.toISOString() : 'never');
 
-        const fetchStartTime = performance.now();
-        const entries = await getUserEntries(userId, lastSync);
-        logPerformance('Firebase Fetch', fetchStartTime);
-        log('Received', entries.length, 'entries from Firebase');
-        
-        if (entries.length > 0) {
-            // Merge new entries with cached entries
-            const mergedEntries = [...cachedEntries];
-            let hasChanges = false;
+            const fetchStartTime = performance.now();
+            // Remove the lastSync parameter to fetch ALL entries initially
+            const entries = await getUserEntries(userId);
+            logPerformance('Firebase Fetch', fetchStartTime);
+            log('Received', entries.length, 'entries from Firebase');
             
-            entries.forEach(newEntry => {
-                const existingIndex = mergedEntries.findIndex(e => e.id === newEntry.id);
-                if (existingIndex !== -1) {
-                    if (JSON.stringify(mergedEntries[existingIndex]) !== JSON.stringify(newEntry)) {
-                        mergedEntries[existingIndex] = newEntry;
-                        hasChanges = true;
-                    }
-                } else {
-                    mergedEntries.push(newEntry);
-                    hasChanges = true;
-                }
-            });
-            
-            if (hasChanges) {
+            if (entries.length > 0) {
                 // Sort by date (newest first)
-                mergedEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+                entries.sort((a, b) => new Date(b.date) - new Date(a.date));
                 
-                // Update cache with merged data
-                await updateCache(userId, mergedEntries);
+                // Update cache with all entries
+                await updateCache(userId, entries);
                 
                 // Update UI
-                log('Updating UI with merged data');
-                journalEntries = mergedEntries;
+                log('Updating UI with fetched data');
+                journalEntries = entries;
                 displayAllEntries();
                 updateJournalHistory();
             } else {
-                log('No changes detected in fetched data');
+                log('No entries found in Firebase');
             }
-        } else {
-            log('No new changes since last sync');
+        } catch (error) {
+            log('Error fetching updates:', error);
+            console.error('Error fetching updates:', error);
         }
     }
 
