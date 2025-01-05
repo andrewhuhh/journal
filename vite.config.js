@@ -21,7 +21,14 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       sourcemap: true,
       assetsDir: 'assets',
-      emptyOutDir: true
+      emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage']
+          }
+        }
+      }
     },
     root: 'src',
     envDir: '..',
