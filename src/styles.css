@@ -9,6 +9,7 @@
     --blur-strength: 12px;
     --flat-color: rgba(255, 255, 255, 1);
     --surface-color: rgba(255, 255, 255, 0.8);
+    --light-color: rgba(255, 255, 255, 0.6);
     --shadow-color: rgba(44, 62, 80, 0.05);
     --border-color: rgba(0, 0, 0, 0.05);
     --accent-color: rgb(63, 141, 230);
@@ -41,18 +42,21 @@ body::after {
     left: 0;
     width: 100%;
     height: 100vh;
-    background: var(--current-gradient);
-    background-color: var(--bg-secondary);
+    background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.4)),
+                url('https://images.unsplash.com/photo-1542480118439-cbba7870f6f7?q=80&w=1976&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     transition: all 0.5s ease;
     z-index: -1;
 }
 
+body:not(.not-authenticated)::after {
+    opacity: 0.9; /* Make background more subtle when authenticated */
+}
+
 body.not-authenticated::after {
-    background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.4)),
-                url('https://images.unsplash.com/photo-1730292422804-5bbb2bd2d3f0?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    opacity: 1;
     filter: none;
 }
 
@@ -114,7 +118,8 @@ body.not-authenticated::after {
     line-height: 1.6;
     padding: 20px;
     transition: all 0.2s ease;
-    box-shadow: none;
+    backdrop-filter: blur(var(--blur-strength));
+    -webkit-backdrop-filter: blur(var(--blur-strength));
 }
 
 .entry-input:focus {
@@ -172,7 +177,7 @@ body.not-authenticated::after {
     position: relative;
     margin: 0;
     border: none;
-    background-color: var(--flat-color);
+    background-color: var(--surface-color);
     padding: 28px;
     transition: all 0.3s ease;
     overflow: visible;
@@ -194,10 +199,7 @@ body.not-authenticated::after {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.3);
     border-radius: 8px;
-    backdrop-filter: blur(var(--blur-strength));
-    -webkit-backdrop-filter: blur(var(--blur-strength));
 }
 
 .entry-content {
@@ -704,7 +706,7 @@ body.not-authenticated::after {
 .date-group {
     margin-bottom: 32px;
     position: relative;
-    background: var(--surface-color);
+    background: var(--bg-hover);
     backdrop-filter: blur(var(--blur-strength));
     -webkit-backdrop-filter: blur(var(--blur-strength));
     border: 1px solid var(--border-color);
@@ -720,7 +722,7 @@ body.not-authenticated::after {
     position: sticky;
     top: 0;
     z-index: 10;
-    background: inherit;
+    background: var(--light-color);
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
     user-select: none;
@@ -728,7 +730,7 @@ body.not-authenticated::after {
 }
 
 .date-group-header:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--surface-color);
 }
 
 .date-group-title {
@@ -766,7 +768,7 @@ body.not-authenticated::after {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    background: var(--shadow-color);
+    background: var(--surface-color);
     transition: max-height 0.3s ease;
     overflow: hidden;
     max-height: 2000px; /* Large enough default height */
@@ -1126,10 +1128,10 @@ body.not-authenticated::after {
     }
 
     .container {
-        margin-left: calc(280px + ((100% - 280px - var(--max-content-width)) / 2));
+        margin-left: calc(320px + ((100% - 320px - var(--max-content-width)) / 2));
         margin-right: auto;
         width: var(--max-content-width);
-        max-width: calc(100% - 280px - 40px);
+        max-width: calc(100% - 320px - 40px);
     }
 }
 
@@ -1909,9 +1911,10 @@ body.not-authenticated .welcome-section {
     align-items: center;
     display: flex;
     gap: 12px;
-    background-image: linear-gradient(to bottom, var(--accent-light), transparent);
+    background-image: linear-gradient(to bottom, var(--bg-hover), transparent);
     margin: 8px 4px;
     border-radius: 12px;
+    border-top: 2px solid var(--border-color);
     pointer-events: none;
 }
 
