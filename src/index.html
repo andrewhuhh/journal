@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
 </head>
-<body>
+<body class="not-authenticated">
     <!-- Mobile menu toggle -->
     <button class="mobile-menu-toggle">
         <span class="material-icons-outlined">menu</span>
@@ -52,6 +52,15 @@
     </div>
 
     <div class="container">
+        <div class="welcome-section">
+            <div class="welcome-content">
+                <p>A place to write your thoughts and memories.</p>
+                <button class="auth-button sign-in welcome-auth-button">
+                    <img src="./assets/google-icon.svg" alt="Google">
+                    <span>Sign in with Google</span>
+                </button>
+            </div>
+        </div>
         <div class="entry-editor">
             <div class="current-time">
                 <span class="material-icons-outlined">schedule</span>

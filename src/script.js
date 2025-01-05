@@ -311,7 +311,9 @@ async function getLastSyncTime(userId) {
 document.addEventListener('DOMContentLoaded', () => {
     // Auth elements
     const container = document.querySelector('.container');
-    const authButton = document.querySelector('.auth-button');
+    const authHeader = document.querySelector('.auth-header');
+    const authButton = document.querySelector('.auth-header .auth-button');
+    const welcomeAuthButton = document.querySelector('.welcome-auth-button');
     const authMenu = document.querySelector('.auth-menu');
     const authMenuUser = document.querySelector('.auth-menu-user');
     const authMenuEmail = document.querySelector('.auth-menu-email');
@@ -344,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (authButton && authMenu) {
         let signInAttemptInProgress = false;
 
-        authButton.addEventListener('click', async (e) => {
+        const handleSignIn = async (e) => {
             e.stopPropagation();
             
             if (!currentUser) {
@@ -378,7 +380,10 @@ document.addEventListener('DOMContentLoaded', () => {
             authMenu.style.right = `${window.innerWidth - buttonRect.right}px`;
             
             authMenu.classList.toggle('active');
-        });
+        };
+
+        authButton.addEventListener('click', handleSignIn);
+        welcomeAuthButton?.addEventListener('click', handleSignIn);
 
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
@@ -401,13 +406,20 @@ document.addEventListener('DOMContentLoaded', () => {
             LOADING_STATES.entries = true;
 
             // User is signed in
+            document.body.classList.remove('not-authenticated');
             container?.classList.remove('not-authenticated');
+            authHeader?.classList.remove('not-authenticated');
+            menuContainer?.classList.remove('hidden');
+            mobileMenuToggle?.classList.remove('hidden');
             
             // Load profile picture with fade-in
             const img = new Image();
             img.onload = () => {
-                authButton.innerHTML = `<img src="${user.photoURL}" alt="${user.displayName}">`;
+                const profileHTML = `<img src="${user.photoURL}" alt="${user.displayName}">`;
+                authButton.innerHTML = profileHTML;
+                welcomeAuthButton.innerHTML = profileHTML;
                 authButton.classList.remove('sign-in');
+                welcomeAuthButton.classList.remove('sign-in');
                 LOADING_STATES.profile = false;
                 if (!LOADING_STATES.entries) hideSkeletons();
             };
@@ -429,18 +441,29 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } else {
             // User is signed out
+            document.body.classList.add('not-authenticated');
             container?.classList.add('not-authenticated');
-            authButton.innerHTML = `
+            authHeader?.classList.add('not-authenticated');
+            menuContainer?.classList.add('hidden');
+            mobileMenuToggle?.classList.add('hidden');
+            const signInHTML = `
                 <img src="./assets/google-icon.svg" alt="Google">
                 <span>Sign in with Google</span>
             `;
+            authButton.innerHTML = signInHTML;
+            welcomeAuthButton.innerHTML = signInHTML;
             authButton.classList.add('sign-in');
+            welcomeAuthButton.classList.add('sign-in');
             authMenuUser.textContent = '';
             authMenuEmail.textContent = '';
             journalEntries = []; // Clear entries
             entriesList.innerHTML = ''; // Clear UI
+            menuItems.innerHTML = ''; // Clear sidebar history
             // Hide menu if it's open
             authMenu.classList.remove('active');
+            menuContainer?.classList.remove('active');
+            menuOverlay?.classList.remove('active');
+            document.body.style.overflow = ''; // Restore scrolling
         }
     });
 

@@ -34,7 +34,7 @@ body {
     overflow-x: hidden;
 }
 
-body::before {
+body::after {
     content: '';
     position: fixed;
     top: 0;
@@ -43,8 +43,28 @@ body::before {
     height: 100vh;
     background: var(--current-gradient);
     background-color: var(--bg-secondary);
-    transition: background 3s ease;
+    transition: all 0.5s ease;
     z-index: -1;
+}
+
+body.not-authenticated::after {
+    background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.4)),
+                url('https://images.unsplash.com/photo-1730292422804-5bbb2bd2d3f0?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    filter: none;
+}
+
+/* Update welcome section text colors for better contrast */
+.not-authenticated .welcome-content h1 {
+    color: white;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.not-authenticated .welcome-content p {
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .container {
@@ -903,12 +923,10 @@ body::before {
     transition: all 0.3s ease;
 }
 
-/* Auth header styles */
-.auth-header {
-    position: fixed;
-    right: 20px;
-    top: 20px;
-    z-index: 1000;
+.auth-header.not-authenticated {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
 }
 
 .auth-button {
@@ -1125,6 +1143,17 @@ body::before {
 .not-authenticated .entry-editor,
 .not-authenticated .entries-list {
     display: none;
+}
+
+.container.not-authenticated {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0;
+    max-width: 100%;
+    width: 100%;
+    padding: 20px;
+    height: 100vh; /* Ensure it takes full height for vertical centering */
 }
 
 .history-item-content {
@@ -1514,4 +1543,125 @@ body::before {
     .skeleton-line {
         height: 14px;
     }
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Welcome section styles */
+.welcome-section {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    min-height: 100vh;
+}
+
+.not-authenticated .welcome-section {
+    display: flex;
+}
+
+.welcome-content {
+    padding: 40px;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.welcome-content h1 {
+    color: var(--text-primary);
+    font-size: 2.5em;
+    margin-bottom: 20px;
+    font-weight: 700;
+}
+
+.welcome-content p {
+    color: var(--text-secondary);
+    font-size: 1.1em;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+.welcome-content .auth-button {
+    margin: 0 auto;
+    padding: 12px 24px;
+    background: var(--flat-color);
+    border: 1px solid var(--border-color);
+    border-radius: 50px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s ease;
+}
+
+.welcome-content .auth-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px var(--shadow-color);
+}
+
+/* Update auth header visibility */
+.auth-header {
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    z-index: 1000;
+    transition: opacity 0.3s ease;
+}
+
+.not-authenticated .auth-header {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+}
+
+/* Hide entry editor and entries list when not authenticated */
+.not-authenticated .entry-editor,
+.not-authenticated .entries-list,
+.not-authenticated .menu-container {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .welcome-content {
+        padding: 32px 24px;
+    }
+
+    .welcome-content h1 {
+        font-size: 2em;
+    }
+
+    .welcome-content p {
+        font-size: 1em;
+    }
+}
+
+.entry-editor,
+.entries-list,
+.menu-container,
+.auth-header {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* Show elements when authenticated */
+body:not(.not-authenticated) .entry-editor,
+body:not(.not-authenticated) .entries-list,
+body:not(.not-authenticated) .menu-container,
+body:not(.not-authenticated) .auth-header {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Welcome section starts hidden and shows when not authenticated */
+.welcome-section {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+body.not-authenticated .welcome-section {
+    opacity: 1;
+    visibility: visible;
 } 
