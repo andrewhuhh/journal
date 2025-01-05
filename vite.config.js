@@ -28,7 +28,8 @@ export default defineConfig(({ mode }) => {
             vendor: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage']
           }
         }
-      }
+      },
+      assetsInclude: ['**/*.svg', '**/*.webp']
     },
     root: 'src',
     envDir: '..',
