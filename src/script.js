@@ -477,6 +477,61 @@ document.addEventListener('DOMContentLoaded', () => {
     const calendarButton = document.querySelector('.menu-item.calendar-button');
     const statsButton = document.querySelector('.stats-button');
 
+    // Near the top with other DOM queries
+    const themeToggle = document.querySelector('.theme-toggle');
+
+    // Add theme management
+    const ThemeManager = {
+        init() {
+            // Check for saved theme or system preference
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            console.log('Theme Manager Init:', { savedTheme, prefersDark });
+            
+            if (savedTheme) {
+                this.setTheme(savedTheme);
+            } else if (prefersDark) {
+                this.setTheme('dark');
+            }
+
+            // Listen for system theme changes
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+                console.log('System theme changed:', e.matches ? 'dark' : 'light');
+                if (!localStorage.getItem('theme')) {
+                    this.setTheme(e.matches ? 'dark' : 'light');
+                }
+            });
+
+            // Add click handler for theme toggle
+            themeToggle?.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                console.log('Theme toggle clicked:', { currentTheme, newTheme });
+                this.setTheme(newTheme);
+            });
+        },
+
+        setTheme(theme) {
+            console.log('Setting theme:', theme);
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            
+            // Update toggle button icon and text
+            const icon = themeToggle?.querySelector('.material-icons-outlined');
+            if (icon) {
+                icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+            }
+            const text = themeToggle?.lastChild;
+            if (text) {
+                text.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+            }
+        }
+    };
+
+    // Initialize theme manager with other initialization code
+    ThemeManager.init();
+
     // Add stats button click handler
     if (statsButton) {
         statsButton.addEventListener('click', async () => {
@@ -1246,7 +1301,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <input type="file" id="edit-image-upload-${Date.now()}" class="image-upload" multiple accept="image/*">
                 <label class="upload-button" for="edit-image-upload-${Date.now()}">
                     <span class="material-icons-outlined">add_photo_alternate</span>
-                    Add Images
+                    <span class="button-text">Add Images</span>
                 </label>
             </div>
             <div class="image-preview-container edit-preview-container"></div>
