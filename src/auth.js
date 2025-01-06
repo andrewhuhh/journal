@@ -16,6 +16,7 @@ const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
 let signInInProgress = false;
+export let currentUser = null;
 
 export async function signInWithGoogle() {
     if (signInInProgress) {
@@ -49,5 +50,8 @@ export async function signOutUser() {
 }
 
 export function onAuthChange(callback) {
-    return auth.onAuthStateChanged(callback);
+    return auth.onAuthStateChanged((user) => {
+        currentUser = user;
+        callback(user);
+    });
 } 

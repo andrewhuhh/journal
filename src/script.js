@@ -10,15 +10,19 @@ import {
 } from './db.js';
 import { TIME_GRADIENTS } from './gradients.js';
 import { getRandomBackground } from './backgrounds.js';
+import { SurveyManager } from './survey.js';
+import { showToast } from './toast.js';
 
 // Add IndexedDB setup
+let dbConnection = null;
 const DB_NAME = 'journalCache';
 const DB_VERSION = 1;
 const ENTRIES_STORE = 'entries';
 const METADATA_STORE = 'metadata';
+const DATES_STORE = 'dates';
 
 // Add after IndexedDB setup constants
-const DEBUG = true;
+const DEBUG = false;
 const CACHE_CONFIG = {
     maxAge: 24 * 60 * 60 * 1000, // Increase to 24 hours for better persistence
     staleWhileRevalidate: true
@@ -42,7 +46,16 @@ const MONTHS = [
 // Add after IndexedDB setup constants
 const DISPLAY_CONFIG = {
     currentWeekOffset: 0, // 0 = current week, 1 = last week, etc.
-    sidebarPreviewItems: 10
+    sidebarPreviewItems: 20
+};
+
+// Add after IndexedDB setup constants
+const PAGINATION_CONFIG = {
+    pageSize: 50,
+    lastVisible: null,
+    hasMore: true,
+    isLoading: false,
+    entryDates: new Set() // Tracks all dates with entries
 };
 
 function updateTimeBasedGradient() {
@@ -128,6 +141,8 @@ function logPerformance(operation, startTime) {
 
 // Initialize IndexedDB
 async function initializeDB() {
+    if (dbConnection) return dbConnection;
+    
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -138,7 +153,8 @@ async function initializeDB() {
         
         request.onsuccess = () => {
             log('Successfully opened IndexedDB');
-            resolve(request.result);
+            dbConnection = request.result;
+            resolve(dbConnection);
         };
 
         request.onupgradeneeded = (event) => {
@@ -158,8 +174,90 @@ async function initializeDB() {
                 const metadataStore = db.createObjectStore(METADATA_STORE, { keyPath: 'key' });
                 log('Created metadata store');
             }
+
+            // Create dates store for calendar view
+            if (!db.objectStoreNames.contains(DATES_STORE)) {
+                const datesStore = db.createObjectStore(DATES_STORE, { keyPath: 'userId' });
+                log('Created dates store');
+            }
         };
     });
+}
+
+// Add new function to handle dates cache
+async function updateDatesCache(userId, dates) {
+    const db = await initializeDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(DATES_STORE, 'readwrite');
+        const store = transaction.objectStore(DATES_STORE);
+        
+        const request = store.put({
+            userId,
+            dates: Array.from(dates),
+            lastUpdated: new Date().toISOString()
+        });
+        
+        request.onerror = () => {
+            log('Error updating dates cache:', request.error);
+            reject(request.error);
+        };
+        
+        request.onsuccess = () => {
+            log('Successfully updated dates cache');
+            resolve();
+        };
+    });
+}
+
+async function getDatesFromCache(userId) {
+    const db = await initializeDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(DATES_STORE, 'readonly');
+        const store = transaction.objectStore(DATES_STORE);
+        const request = store.get(userId);
+        
+        request.onerror = () => {
+            log('Error reading dates cache:', request.error);
+            reject(request.error);
+        };
+        
+        request.onsuccess = () => {
+            const data = request.result;
+            if (data && data.dates) {
+                log('Found', data.dates.length, 'dates in cache');
+                resolve(new Set(data.dates));
+            } else {
+                log('No dates found in cache');
+                resolve(new Set());
+            }
+        };
+    });
+}
+
+// Modify loadCalendarDates to use cache
+async function loadCalendarDates() {
+    if (!currentUser) return;
+    
+    try {
+        // Try to get dates from cache first
+        const cachedDates = await getDatesFromCache(currentUser.uid);
+        if (cachedDates.size > 0) {
+            PAGINATION_CONFIG.entryDates = cachedDates;
+            return Array.from(cachedDates);
+        }
+        
+        // If no cached dates, fetch from Firebase
+        const dates = await getEntryDates(currentUser.uid);
+        PAGINATION_CONFIG.entryDates = new Set(dates);
+        
+        // Update cache
+        await updateDatesCache(currentUser.uid, PAGINATION_CONFIG.entryDates);
+        
+        return dates;
+    } catch (error) {
+        console.error('Error loading calendar dates:', error);
+        throw error;
+    }
 }
 
 // Cache operations
@@ -369,6 +467,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuOverlay = document.querySelector('.menu-overlay');
     const mobileMenuToggle = document.querySelector('.mobile-menu-toggle');
     const calendarButton = document.querySelector('.menu-item.calendar-button');
+    const statsButton = document.querySelector('.stats-button');
+
+    // Add stats button click handler
+    if (statsButton) {
+        statsButton.addEventListener('click', async () => {
+            await SurveyManager.show();
+        });
+    } else {
+        console.error('Stats button not found in DOM');
+    }
 
     // Add calendar button click handler
     if (calendarButton) {
@@ -680,11 +788,11 @@ document.addEventListener('DOMContentLoaded', () => {
         weekNav.innerHTML = `
             <button class="pagination-button prev" ${weekOffset >= 52 ? 'disabled' : ''}>
                 <span class="material-icons-outlined">chevron_left</span>
-                Previous Week
+                <span class="button-text">Previous Week</span>
             </button>
             <span class="pagination-info">${weekDisplay}</span>
             <button class="pagination-button next" ${weekOffset === 0 ? 'disabled' : ''}>
-                Next Week
+                <span class="button-text">Next Week</span>
                 <span class="material-icons-outlined">chevron_right</span>
             </button>
         `;
@@ -891,7 +999,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         year: 'numeric'
                     })}
                 </div>
+                <div class="date-group-actions">
+                    <button class="view-survey" title="View Survey">
+                        <span class="material-icons-outlined">lightbulb</span>
+                    </button>
+                </div>
             `;
+            
+            // Add survey view handler
+            const viewSurveyButton = header.querySelector('.view-survey');
+            viewSurveyButton.addEventListener('click', () => {
+                SurveyManager.viewSurvey(date.toISOString());
+            });
             
             const entriesContainer = document.createElement('div');
             entriesContainer.className = 'date-group-entries';
@@ -899,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add click handler to the entire header
             header.addEventListener('click', (e) => {
                 // Don't toggle if clicking on an action button or menu
-                if (e.target.closest('.entry-actions')) return;
+                if (e.target.closest('.entry-actions') || e.target.closest('.date-group-actions')) return;
                 
                 const isCollapsed = group.classList.contains('collapsed');
                 const entriesContainer = group.querySelector('.date-group-entries');
@@ -1096,6 +1215,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             entry.appendChild(imagesDiv);
+        }
+
+        // Add stats if present
+        if (entry.stats && Object.keys(entry.stats).length > 0) {
+            const statsElement = createStatsElement(entry.stats);
+            if (statsElement) {
+                entry.appendChild(statsElement);
+            }
         }
 
         // Add event listeners for entry actions
@@ -1418,8 +1545,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function saveEntry() {
-        if (!currentUser) return;
-        
         const content = entryInput.value.trim();
         if (!content && images.length === 0) return;
 
@@ -1430,6 +1555,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Upload images first if any
             const uploadedImages = [];
             if (images.length > 0) {
+                const loadingToast = showToast('Uploading images...', 'info', 0);
                 log('Uploading', images.length, 'images');
                 for (const imageData of images) {
                     const response = await fetch(imageData);
@@ -1440,12 +1566,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     uploadedImages.push({ url, path });
                     log('Uploaded image:', path);
                 }
+                loadingToast.remove();
+                showToast('Images uploaded successfully!', 'success');
             }
 
             const newEntry = {
                 content,
                 date: new Date(),
-                images: uploadedImages.map(img => img.url)
+                images: uploadedImages.map(img => img.url),
             };
 
             // Save to Firebase
@@ -1486,10 +1614,17 @@ document.addEventListener('DOMContentLoaded', () => {
             updateJournalHistory();
             
             logPerformance('Total Save Operation', startTime);
+
+            // Update dates cache with new entry date
+            const dateKey = formatDateKey(newEntry.date);
+            PAGINATION_CONFIG.entryDates.add(dateKey);
+            await updateDatesCache(currentUser.uid, PAGINATION_CONFIG.entryDates);
+
+            showToast('Journal entry saved successfully!', 'success');
         } catch (error) {
             console.error('Error saving entry:', error);
             log('Failed to save entry:', error.message);
-            alert('Failed to save entry. Please try again.');
+            showToast('Failed to save entry. Please try again.', 'error');
         }
     }
 
@@ -1568,6 +1703,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Delete any associated images first
                 if (entryToDelete.images && entryToDelete.images.length > 0) {
+                    const loadingToast = showToast('Deleting images...', 'info', 0);
                     for (const imageUrl of entryToDelete.images) {
                         try {
                             await deleteImage(imageUrl);
@@ -1579,6 +1715,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Continue with entry deletion even if image deletion fails
                         }
                     }
+                    loadingToast.remove();
                 }
 
                 await deleteEntryFromDb(entryToDelete.id);
@@ -1593,9 +1730,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!dateGroup.querySelector('.date-group-entries').hasChildNodes()) {
                     dateGroup.remove();
                 }
+
+                // Check if this was the last entry for this date
+                const dateKey = formatDateKey(new Date(journalEntries[entryIndex].date));
+                const entriesOnSameDate = journalEntries.filter(e => 
+                    formatDateKey(new Date(e.date)) === dateKey
+                );
+                
+                if (entriesOnSameDate.length === 1) {
+                    // This was the last entry for this date, remove from dates cache
+                    PAGINATION_CONFIG.entryDates.delete(dateKey);
+                    await updateDatesCache(currentUser.uid, PAGINATION_CONFIG.entryDates);
+                }
+
+                showToast('Journal entry deleted successfully!', 'success');
             } catch (error) {
                 console.error('Error deleting entry:', error);
-                alert('Failed to delete entry. Please try again.');
+                showToast('Failed to delete entry. Please try again.', 'error');
             }
         }
     }
@@ -1666,14 +1817,26 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create history items
         dates.forEach(dateKey => {
             const entries = groupedEntries[dateKey];
+            const date = new Date(entries[0].date);
             
             // Create date header
             const dateHeader = document.createElement('div');
-            dateHeader.className = `menu-item date-header${dateKey === today ? ' today' : ''}`;
+            dateHeader.className = 'menu-item date-header';  // Removed today class
             dateHeader.innerHTML = `
                 <span class="material-icons-outlined">calendar_today</span>
                 <div class="history-date">${dateKey}</div>
+                <button class="view-survey" title="View Survey">
+                    <span class="material-icons-outlined">lightbulb</span>
+                </button>
             `;
+
+            // Add survey view handler
+            const viewSurveyButton = dateHeader.querySelector('.view-survey');
+            viewSurveyButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                SurveyManager.viewSurvey(date.toISOString());
+            });
+
             menuItems.appendChild(dateHeader);
 
             // Sort entries based on whether it's today or not
@@ -1727,14 +1890,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         displayAllEntries(diffWeeks);
                     }
                     
-                    // Close mobile menu if it's open
-                    if (menuContainer && menuOverlay) {
-                        menuContainer.classList.remove('active');
-                        menuOverlay.classList.remove('active');
-                        document.body.style.overflow = ''; // Restore scrolling
+                    // Close any open calendar view
+                    const calendarOverlay = document.querySelector('.dialog-overlay.calendar-overlay');
+                    if (calendarOverlay) {
+                        calendarOverlay.classList.remove('active');
+                        setTimeout(() => {
+                            calendarOverlay.remove();
+                        }, 300);
                     }
-
-                    // Now find and scroll to the entry
+                    
+                    // Find and scroll to the date group
                     const dateKey = formatDateKey(entryDate);
                     const dateGroup = document.querySelector(`.date-group[data-date="${dateKey}"]`);
                     if (dateGroup) {
@@ -1745,26 +1910,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
                         }
                         
-                        // Find and highlight the specific entry
-                        const entryElement = Array.from(dateGroup.querySelectorAll('.entry')).find(el => {
-                            const timeEl = el.querySelector('.entry-time');
-                            return timeEl && timeEl.textContent === timeStr;
-                        });
-                        
-                        if (entryElement) {
-                            // Remove highlight from all entries
-                            document.querySelectorAll('.entry').forEach(e => e.classList.remove('highlighted'));
-                            document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
-                            
-                            // Add highlight to clicked entry
-                            entryElement.classList.add('highlighted');
-                            historyItem.classList.add('active');
-                            
-                            // Ensure the entry is visible
-                            setTimeout(() => {
-                                entryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }, 100); // Small delay to ensure the week view has updated
-                        }
+                        // Add a small delay to ensure smooth transition
+                        setTimeout(() => {
+                            dateGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 350);
                     }
                 });
                 
@@ -1823,28 +1972,100 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Add new function to handle background updates
+    // Add new function to handle pagination
+    async function loadMoreEntries() {
+        if (!currentUser || PAGINATION_CONFIG.isLoading || !PAGINATION_CONFIG.hasMore) return;
+        
+        try {
+            PAGINATION_CONFIG.isLoading = true;
+            const options = {
+                limit: PAGINATION_CONFIG.pageSize,
+                startAfter: PAGINATION_CONFIG.lastVisible
+            };
+            
+            const { entries, lastVisible, hasMore } = await getUserEntries(currentUser.uid, options);
+            
+            // Update pagination state
+            PAGINATION_CONFIG.lastVisible = lastVisible;
+            PAGINATION_CONFIG.hasMore = hasMore;
+            
+            // Add new entries to the cache and local state
+            await addToCache(currentUser.uid, entries);
+            journalEntries.push(...entries);
+            
+            // Update UI
+            displayAllEntries();
+            updateJournalHistory();
+            
+            return entries;
+        } catch (error) {
+            console.error('Error loading more entries:', error);
+            throw error;
+        } finally {
+            PAGINATION_CONFIG.isLoading = false;
+        }
+    }
+
+    // Modify fetchAndMergeUpdates
     async function fetchAndMergeUpdates(userId, cachedEntries) {
         try {
             const lastSync = await getLastSyncTime(userId);
             log('Last sync time:', lastSync ? lastSync.toISOString() : 'never');
 
+            // Reset pagination state
+            PAGINATION_CONFIG.lastVisible = null;
+            PAGINATION_CONFIG.hasMore = true;
+            
             const fetchStartTime = performance.now();
-            // Remove the lastSync parameter to fetch ALL entries initially
-            const entries = await getUserEntries(userId);
+            
+            // If we have cached entries, only fetch updates
+            // If no cached entries, fetch everything
+            const options = {
+                limit: PAGINATION_CONFIG.pageSize
+            };
+            
+            if (cachedEntries && cachedEntries.length > 0) {
+                options.lastSync = lastSync;
+            }
+            
+            const { entries, lastVisible, hasMore } = await getUserEntries(userId, options);
             logPerformance('Firebase Fetch', fetchStartTime);
             log('Received', entries.length, 'entries from Firebase');
             
+            // Update pagination state
+            PAGINATION_CONFIG.lastVisible = lastVisible;
+            PAGINATION_CONFIG.hasMore = hasMore;
+            
             if (entries.length > 0) {
-                // Sort by date (newest first)
-                entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+                // If these are updates, merge them with cached entries
+                let updatedEntries = entries;
+                if (cachedEntries && cachedEntries.length > 0) {
+                    // Remove updated entries from cache
+                    const updatedIds = new Set(entries.map(e => e.id));
+                    const nonUpdatedEntries = cachedEntries.filter(e => !updatedIds.has(e.id));
+                    
+                    // Merge and sort
+                    updatedEntries = [...entries, ...nonUpdatedEntries];
+                }
                 
-                // Update cache with all entries
-                await updateCache(userId, entries);
+                // Sort by date (newest first)
+                updatedEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Update cache with fetched entries
+                await updateCache(userId, updatedEntries);
                 
                 // Update UI
                 log('Updating UI with fetched data');
-                journalEntries = entries;
+                journalEntries = updatedEntries;
+                displayAllEntries();
+                updateJournalHistory();
+                
+                // Load calendar dates in the background
+                loadCalendarDates();
+            } else if (cachedEntries && cachedEntries.length > 0) {
+                // No updates but we have cached entries, use those
+                log('No updates found, using cached entries');
+                journalEntries = cachedEntries;
                 displayAllEntries();
                 updateJournalHistory();
             } else {
@@ -1855,6 +2076,13 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error fetching updates:', error);
         }
     }
+
+    // Add scroll handler to load more entries
+    document.addEventListener('scroll', () => {
+        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
+            loadMoreEntries();
+        }
+    });
 
     // Add skeleton UI functions
     function showSkeletonProfile() {
@@ -1926,9 +2154,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add after updateJournalHistory function
     function createCalendarView() {
-        const calendarDialog = document.createElement('div');
-        calendarDialog.className = 'dialog-overlay calendar-overlay';
+        const calendarOverlay = document.createElement('div');
+        calendarOverlay.className = 'dialog-overlay calendar-overlay';
         
+        const calendarDialog = document.createElement('div');
+        calendarDialog.className = 'dialog calendar-dialog';
+        calendarOverlay.appendChild(calendarDialog);
+        
+        // Function to properly close calendar
+        function closeCalendarView() {
+            calendarOverlay.classList.remove('active');
+            setTimeout(() => {
+                calendarOverlay.remove();
+            }, 300);
+        }
+
         const currentDate = new Date();
         let currentMonth = currentDate.getMonth();
         let currentYear = currentDate.getFullYear();
@@ -1953,29 +2193,27 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             let calendarHTML = `
-                <div class="dialog calendar-dialog">
-                    <div class="calendar-header">
-                        <button class="calendar-nav prev">
-                            <span class="material-icons-outlined">chevron_left</span>
-                        </button>
-                        <h2>${MONTHS[month]} ${year}</h2>
-                        <button class="calendar-nav next">
-                            <span class="material-icons-outlined">chevron_right</span>
-                        </button>
+                <div class="calendar-header">
+                    <button class="calendar-nav prev">
+                        <span class="material-icons-outlined">chevron_left</span>
+                    </button>
+                    <h2>${MONTHS[month]} ${year}</h2>
+                    <button class="calendar-nav next">
+                        <span class="material-icons-outlined">chevron_right</span>
+                    </button>
+                </div>
+                <div class="calendar-body">
+                    <div class="calendar-weekdays">
+                        <div>Sun</div>
+                        <div>Mon</div>
+                        <div>Tue</div>
+                        <div>Wed</div>
+                        <div>Thu</div>
+                        <div>Fri</div>
+                        <div>Sat</div>
                     </div>
-                    <div class="calendar-body">
-                        <div class="calendar-weekdays">
-                            <div>Sun</div>
-                            <div>Mon</div>
-                            <div>Tue</div>
-                            <div>Wed</div>
-                            <div>Thu</div>
-                            <div>Fri</div>
-                            <div>Sat</div>
-                        </div>
-                        <div class="calendar-days">
-            `;
-            
+                    <div class="calendar-days">`;
+        
             // Add empty cells for days before the first day of the month
             for (let i = 0; i < startingDay; i++) {
                 calendarHTML += '<div class="calendar-day empty"></div>';
@@ -1992,19 +2230,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="calendar-day${isToday ? ' today' : ''}${entries.length ? ' has-entries' : ''}" data-date="${year}-${month + 1}-${day}">
                         <span class="day-number">${day}</span>
                         ${entries.length ? `<span class="entry-count">${entries.length}</span>` : ''}
-                    </div>
-                `;
+                    </div>`;
             }
             
             calendarHTML += `
-                        </div>
-                    </div>
-                    <div class="dialog-actions">
-                        <button class="dialog-button close">Close</button>
                     </div>
                 </div>
-            `;
-            
+                <div class="dialog-actions">
+                    <button class="dialog-button close">Close</button>
+                </div>`;
+        
             calendarDialog.innerHTML = calendarHTML;
             
             // Add event listeners
@@ -2033,7 +2268,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             
             closeButton.onclick = () => {
-                calendarDialog.remove();
+                closeCalendarView();
             };
             
             // Add click handlers for days with entries
@@ -2046,11 +2281,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const today = new Date();
                     const startOfCurrentWeek = new Date(today);
                     startOfCurrentWeek.setHours(0, 0, 0, 0);
-                    startOfCurrentWeek.setDate(today.getDate() - today.getDay()); // Start of current week (Sunday)
+                    startOfCurrentWeek.setDate(today.getDate() - today.getDay());
                     
                     const selectedWeekStart = new Date(selectedDate);
                     selectedWeekStart.setHours(0, 0, 0, 0);
-                    selectedWeekStart.setDate(selectedDate.getDate() - selectedDate.getDay()); // Start of selected date's week
+                    selectedWeekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
                     
                     // Calculate the difference in weeks
                     const diffWeeks = Math.round((startOfCurrentWeek - selectedWeekStart) / (7 * 24 * 60 * 60 * 1000));
@@ -2061,8 +2296,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         displayAllEntries(diffWeeks);
                     }
                     
-                    // Close the calendar dialog
-                    calendarDialog.remove();
+                    // Close the calendar view
+                    closeCalendarView();
                     
                     // Find and scroll to the date group
                     const dateKey = formatDateKey(selectedDate);
@@ -2075,28 +2310,232 @@ document.addEventListener('DOMContentLoaded', () => {
                             entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
                         }
                         
-                        // Scroll to the date group
                         setTimeout(() => {
-                            dateGroup.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }, 100); // Small delay to ensure the week view has updated
+                            dateGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 350);
                     }
                 });
             });
         }
         
         generateCalendar(currentMonth, currentYear);
-        document.body.appendChild(calendarDialog);
         
         // Close when clicking outside
-        calendarDialog.addEventListener('click', (e) => {
-            if (e.target === calendarDialog) {
-                calendarDialog.remove();
+        calendarOverlay.addEventListener('click', (e) => {
+            if (e.target === calendarOverlay) {
+                closeCalendarView();
             }
         });
         
-        // Show the dialog
+        // Add to document and show with animation
+        document.body.appendChild(calendarOverlay);
         requestAnimationFrame(() => {
-            calendarDialog.classList.add('active');
+            calendarOverlay.classList.add('active');
         });
     }
+
+    async function createDateGroup(date, entries) {
+        const dateStr = date.toISOString().split('T')[0];
+        const formattedDate = formatDate(date);
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+        
+        console.log('Creating date group for:', dateStr);
+        
+        // Check if a survey exists for this date
+        const hasSurvey = await dbService.hasSurveyForDate(dateStr);
+        console.log('Survey exists for', dateStr, ':', hasSurvey);
+        
+        const group = document.createElement('div');
+        group.className = 'date-group';
+        group.dataset.date = dateStr;
+        
+        const header = document.createElement('div');
+        header.className = 'date-header';
+        header.innerHTML = `
+            <div class="date-info">
+                <div class="date-day">${dayName}</div>
+                <div class="date-full">${formattedDate}</div>
+            </div>
+            <div class="date-group-actions">
+                <button class="view-survey" ${!hasSurvey ? 'disabled' : ''} title="${hasSurvey ? 'View survey' : 'No survey available'}">
+                    <span class="material-icons-outlined">assignment</span>
+                </button>
+            </div>
+        `;
+        
+        // Add click handler for survey button only if survey exists
+        if (hasSurvey) {
+            header.querySelector('.view-survey').addEventListener('click', () => {
+                console.log('Viewing survey for date:', dateStr);
+                SurveyManager.viewSurvey(dateStr);
+            });
+        }
+        
+        group.appendChild(header);
+        
+        // Add entries
+        const entriesContainer = document.createElement('div');
+        entriesContainer.className = 'date-entries';
+        
+        entries.forEach(entry => {
+            const entryElement = createEntryElement(entry);
+            entriesContainer.appendChild(entryElement);
+        });
+        
+        group.appendChild(entriesContainer);
+        return group;
+    }
+
+    async function saveEntry(entry) {
+        try {
+            const entryId = await saveEntryToDb(entry);
+            showToast('Journal entry saved successfully!', 'success');
+            return entryId;
+        } catch (error) {
+            console.error('Error saving entry:', error);
+            showToast('Failed to save journal entry. Please try again.', 'error');
+            throw error;
+        }
+    }
+
+    async function updateExistingEntry(entryId, updates) {
+        try {
+            await updateEntry(entryId, updates);
+            showToast('Journal entry updated successfully!', 'success');
+        } catch (error) {
+            console.error('Error updating entry:', error);
+            showToast('Failed to update journal entry. Please try again.', 'error');
+            throw error;
+        }
+    }
+
+    async function deleteExistingEntry(entryId) {
+        try {
+            await deleteEntryFromDb(entryId);
+            showToast('Journal entry deleted successfully!', 'success');
+        } catch (error) {
+            console.error('Error deleting entry:', error);
+            showToast('Failed to delete journal entry. Please try again.', 'error');
+            throw error;
+        }
+    }
+
+    function handleImageUpload(file, editor) {
+        if (!file) return;
+
+        // Show loading toast
+        const loadingToast = showToast('Uploading image...', 'info', 0);
+        
+        uploadImage(currentUser.uid, file)
+            .then(result => {
+                // Remove loading toast
+                loadingToast.remove();
+                
+                // Insert image into editor
+                editor.insertImage(result.url);
+                
+                // Show success toast
+                showToast('Image uploaded successfully!', 'success');
+            })
+            .catch(error => {
+                // Remove loading toast
+                loadingToast.remove();
+                
+                console.error('Error uploading image:', error);
+                showToast('Failed to upload image. Please try again.', 'error');
+            });
+    }
+
+    function handleAuthError(error) {
+        console.error('Auth error:', error);
+        const errorMessage = error.code === 'auth/popup-closed-by-user' 
+            ? 'Sign-in was cancelled'
+            : 'Failed to sign in. Please try again.';
+        
+        showToast(errorMessage, 'error');
+    }
+
+    function handleSignOut() {
+        signOutUser()
+            .then(() => {
+                showToast('Signed out successfully!', 'success');
+            })
+            .catch(error => {
+                console.error('Error signing out:', error);
+                showToast('Failed to sign out. Please try again.', 'error');
+            });
+    }
+
+    // Function to properly close calendar dialog
+    function closeCalendarDialog() {
+        const calendarDialog = document.querySelector('.calendar-dialog');
+        const calendarOverlay = document.querySelector('.dialog-overlay.calendar-overlay');
+        
+        if (calendarDialog) {
+            calendarDialog.classList.remove('active');
+        }
+        if (calendarOverlay) {
+            calendarOverlay.classList.remove('active');
+        }
+        
+        // Wait for animation to complete before removing elements
+        setTimeout(() => {
+            if (calendarDialog) calendarDialog.remove();
+            if (calendarOverlay) calendarOverlay.remove();
+        }, 300);
+    }
+
+    // Update the calendar day click handler
+    calendarDialog.querySelectorAll('.calendar-day.has-entries').forEach(dayElement => {
+        dayElement.addEventListener('click', () => {
+            const [year, month, day] = dayElement.dataset.date.split('-').map(Number);
+            const selectedDate = new Date(year, month - 1, day);
+            
+            // Calculate which week this date belongs to
+            const today = new Date();
+            const startOfCurrentWeek = new Date(today);
+            startOfCurrentWeek.setHours(0, 0, 0, 0);
+            startOfCurrentWeek.setDate(today.getDate() - today.getDay());
+            
+            const selectedWeekStart = new Date(selectedDate);
+            selectedWeekStart.setHours(0, 0, 0, 0);
+            selectedWeekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
+            
+            // Calculate the difference in weeks
+            const diffWeeks = Math.round((startOfCurrentWeek - selectedWeekStart) / (7 * 24 * 60 * 60 * 1000));
+            
+            // Update the week offset and redisplay
+            if (diffWeeks !== DISPLAY_CONFIG.currentWeekOffset) {
+                DISPLAY_CONFIG.currentWeekOffset = diffWeeks;
+                displayAllEntries(diffWeeks);
+            }
+            
+            // Close the calendar dialog with animation
+            closeCalendarDialog();
+            
+            // Find and scroll to the date group
+            const dateKey = formatDateKey(selectedDate);
+            const dateGroup = document.querySelector(`.date-group[data-date="${dateKey}"]`);
+            if (dateGroup) {
+                // Ensure the group is expanded
+                dateGroup.classList.remove('collapsed');
+                const entriesContainer = dateGroup.querySelector('.date-group-entries');
+                if (entriesContainer) {
+                    entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
+                }
+                
+                // Add a small delay to ensure smooth transition
+                setTimeout(() => {
+                    dateGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 350);
+            }
+        });
+    });
+
+    // Update the click outside handler
+    calendarDialog.addEventListener('click', (e) => {
+        if (e.target === calendarDialog) {
+            closeCalendarDialog();
+        }
+    });
 }); 

@@ -1,0 +1,23 @@
+[debug] [2025-01-06T05:22:58.832Z] ----------------------------------------------------------------------
+[debug] [2025-01-06T05:22:58.835Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init firestore
+[debug] [2025-01-06T05:22:58.835Z] CLI Version:   13.27.0
+[debug] [2025-01-06T05:22:58.835Z] Platform:      win32
+[debug] [2025-01-06T05:22:58.835Z] Node Version:  v20.13.1
+[debug] [2025-01-06T05:22:58.835Z] Time:          Sun Jan 05 2025 21:22:58 GMT-0800 (Pacific Standard Time)
+[debug] [2025-01-06T05:22:58.835Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-01-06T05:22:58.838Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2025-01-06T05:22:58.879Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-01-06T05:22:58.894Z] Error: Could not load the default credentials. Browse to https://cloud.google.com/docs/authentication/getting-started for more information.
+    at GoogleAuth.getApplicationDefaultAsync (C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\node_modules\google-auth-library\build\src\auth\googleauth.js:287:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async GoogleAuth._GoogleAuth_determineClient (C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\node_modules\google-auth-library\build\src\auth\googleauth.js:832:32)
+    at async GoogleAuth.getClient (C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\node_modules\google-auth-library\build\src\auth\googleauth.js:696:20)
+    at async GoogleAuth.getAccessToken (C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\node_modules\google-auth-library\build\src\auth\googleauth.js:720:24)
+    at async autoAuth (C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\lib\requireAuth.js:26:19)
+    at async Object.requireAuth [as fn] (C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\lib\requireAuth.js:80:20)
+    at async C:\Users\admin\AppData\Roaming\npm\node_modules\firebase-tools\lib\command.js:241:17
+[error] 
+[error] Error: Failed to authenticate, have you run firebase login?
+[debug] [2025-01-06T05:22:59.055Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2025-01-06T05:22:59.056Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Journal</title>
     <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./toast.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
 </head>
 <body class="not-authenticated">
@@ -52,7 +53,7 @@
         </div>
         <div class="menu-item history-label">
             <span class="material-icons-outlined">history</span>
-            Journal History
+            Recently written
         </div>
         <div class="menu-items">
             <!-- Menu items will be added here -->
@@ -82,12 +83,20 @@
                 <!-- Upload progress will be shown here -->
             </div>
             <div class="entry-controls">
-                <div class="image-upload-wrapper">
-                    <label for="image-upload" class="upload-button">
-                        <span class="material-icons-outlined">add_photo_alternate</span>
-                        Add Images
-                    </label>
-                    <input type="file" id="image-upload" class="image-upload" accept="image/*" multiple>
+                <div class="entry-controls-left">
+                    <div class="image-upload-wrapper">
+                        <label for="image-upload" class="upload-button">
+                            <span class="material-icons-outlined">add_photo_alternate</span>
+                            <span class="button-text">Add Images</span>
+                        </label>
+                        <input type="file" id="image-upload" class="image-upload" accept="image/*" multiple>
+                    </div>
+                    <div class="stats-wrapper">
+                        <button class="stats-button">
+                            <span class="material-icons-outlined">star</span>
+                            <span class="button-text">Daily Check-in</span>
+                        </button>
+                    </div>
                 </div>
                 <button class="submit-button">
                     <span class="material-icons-outlined">check</span>
@@ -124,5 +133,7 @@
     </div>
 
     <script type="module" src="./script.js"></script>
+    <link rel="stylesheet" href="./survey.css">
+    <script type="module" src="./survey.js"></script>
 </body>
 </html> 
