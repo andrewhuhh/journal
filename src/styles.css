@@ -2216,3 +2216,45 @@ body.not-authenticated .welcome-section {
 .entry-move-time {
     font: var(--font-normal-light);
 }
+
+.background-url-input {
+    width: 100%;
+    background: var(--surface-color);
+    border-radius: 16px;
+    font: var(--font-normal-light);
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    backdrop-filter: blur(var(--blur-strength));
+    -webkit-backdrop-filter: blur(var(--blur-strength));
+    display: flex;
+    align-items: left;
+    flex-direction: column;
+}
+
+.custom-background-url {
+    margin-top: 4px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    outline: none;
+}
+
+.background-url-input:focus {
+    outline: none;
+    background: var(--flat-color);
+    box-shadow: 0 8px 32px var(--surface-color);
+    border: none;
+}
+
+.input-hint {
+    color: var(--text-secondary);
+    font: var(--font-small);
+    margin-top: 12px;
+    text-align: center;
+}
+
+.background-url-input label {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: var(--text-secondary);
+}

@@ -6,12 +6,16 @@ import {
     deleteEntry as deleteEntryFromDb, 
     getUserEntries,
     uploadImage,
-    deleteImage 
+    deleteImage,
+    getUserData 
 } from './db.js';
 import { TIME_GRADIENTS } from './gradients.js';
 import { getRandomBackground } from './backgrounds.js';
 import { SurveyManager } from './survey.js';
 import { showToast } from './toast.js';
+
+// Add IndexedDB setup
+let currentUser = null; // Move this to the top level scope
 
 // Add IndexedDB setup
 let dbConnection = null;
@@ -34,8 +38,12 @@ const LOADING_STATES = {
     entries: false
 };
 
+// Add after IndexedDB setup constants
 let lastGradientUpdate = 0;
 const GRADIENT_UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+// Add custom background handling
+let customBackgroundUrl = null;
 
 // Add after IndexedDB setup constants
 const MONTHS = [
@@ -492,8 +500,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    let currentUser = null;
-
     // Auth state handling
     onAuthChange((user) => {
         currentUser = user;
@@ -527,13 +533,130 @@ document.addEventListener('DOMContentLoaded', () => {
             authMenuUser.textContent = user.displayName;
             authMenuEmail.textContent = user.email;
             
+            // Update auth menu to include background customization
+            const customizeSection = document.createElement('div');
+            customizeSection.className = 'auth-menu-section';
+            customizeSection.innerHTML = `
+                <div class="auth-menu-item customize-background">
+                    <span class="material-icons-outlined">wallpaper</span>
+                    Set Background
+                </div>
+                <div class="auth-menu-item reset-background">
+                    <span class="material-icons-outlined">refresh</span>
+                    Reset Background
+                </div>
+            `;
+            
+            // Insert before sign out button
+            signOutButton.parentNode.insertBefore(customizeSection, signOutButton);
+            
+            // Add click handlers for new menu items
+            const customizeBackgroundButton = customizeSection.querySelector('.customize-background');
+            const resetBackgroundButton = customizeSection.querySelector('.reset-background');
+            
+            customizeBackgroundButton.addEventListener('click', () => {
+                // Create and show the background customization dialog
+                const dialog = document.createElement('div');
+                dialog.className = 'dialog-overlay';
+                dialog.innerHTML = `
+                    <div class="dialog">
+                        <div class="dialog-title">Set Custom Background</div>
+                        <div class="dialog-content">
+                            <div class="background-url-input">
+                                <input type="url" class="custom-background-url" placeholder="https://example.com/image.jpg" value="${customBackgroundUrl || ''}">
+                                <p class="input-hint">Enter a direct link to an image (ends with .jpg, .png, etc.)</p>
+                            </div>
+                        </div>
+                        <div class="dialog-actions">
+                            <button class="dialog-button cancel">Cancel</button>
+                            <button class="dialog-button submit">Apply</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(dialog);
+                dialog.classList.add('active');
+                authMenu.classList.remove('active');
+                
+                const urlInput = dialog.querySelector('.custom-background-url');
+                const cancelButton = dialog.querySelector('.cancel');
+                const submitButton = dialog.querySelector('.submit');
+                
+                cancelButton.onclick = () => {
+                    dialog.remove();
+                };
+                
+                submitButton.onclick = async () => {
+                    const url = urlInput.value.trim();
+                    if (!url) {
+                        showToast('Please enter a valid image URL', 'error');
+                        return;
+                    }
+                    
+                    // Test if URL is valid and points to an image
+                    try {
+                        const img = new Image();
+                        img.onload = async () => {
+                            customBackgroundUrl = url;
+                            document.documentElement.style.setProperty('--background-url', `url('${url}')`);
+                            
+                            // Save the custom background URL to user data
+                            await saveUserData(currentUser.uid, {
+                                customBackgroundUrl: url
+                            });
+                            
+                            dialog.remove();
+                            showToast('Background updated successfully!', 'success');
+                        };
+                        img.onerror = () => {
+                            showToast('Invalid image URL. Please try another.', 'error');
+                        };
+                        img.src = url;
+                    } catch (error) {
+                        showToast('Failed to set background. Please try again.', 'error');
+                    }
+                };
+                
+                // Close dialog when clicking outside
+                dialog.onclick = (e) => {
+                    if (e.target === dialog) {
+                        dialog.remove();
+                    }
+                };
+            });
+            
+            resetBackgroundButton.addEventListener('click', async () => {
+                try {
+                    customBackgroundUrl = null;
+                    const newBackground = getRandomBackground();
+                    document.documentElement.style.setProperty('--background-url', `url('${newBackground}')`);
+                    
+                    // Remove custom background URL from user data
+                    await saveUserData(currentUser.uid, {
+                        customBackgroundUrl: null
+                    });
+                    
+                    authMenu.classList.remove('active');
+                    showToast('Background reset to random images', 'success');
+                } catch (error) {
+                    showToast('Failed to reset background. Please try again.', 'error');
+                }
+            });
+            
             // Save user data and migrate localStorage entries
             saveUserData(user.uid, {
                 displayName: user.displayName,
                 email: user.email,
                 photoURL: user.photoURL,
                 lastLogin: new Date()
-            }).then(() => {
+            }).then(async () => {
+                // Load user's custom background if they have one
+                const userData = await getUserData(user.uid);
+                if (userData?.customBackgroundUrl) {
+                    customBackgroundUrl = userData.customBackgroundUrl;
+                    document.documentElement.style.setProperty('--background-url', `url('${customBackgroundUrl}')`);
+                }
+                
                 migrateLocalStorageToFirebase(user).then(() => {
                     loadEntries(); // Load entries after migration
                 });
@@ -563,6 +686,8 @@ document.addEventListener('DOMContentLoaded', () => {
             menuContainer?.classList.remove('active');
             menuOverlay?.classList.remove('active');
             document.body.style.overflow = ''; // Restore scrolling
+            customBackgroundUrl = null; // Reset custom background on sign out
+            document.documentElement.style.setProperty('--background-url', `url('${getRandomBackground()}')`);
         }
     });
 
@@ -634,7 +759,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load entries from localStorage with proper date handling
     async function loadEntries() {
-        if (!currentUser) return;
+        if (!currentUser) {
+            log('No user logged in, skipping entry load');
+            return;
+        }
         
         const startTime = performance.now();
         log('Loading entries for user:', currentUser.uid);
@@ -1545,6 +1673,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function saveEntry() {
+        if (!currentUser) {
+            showToast('Please sign in to save entries', 'error');
+            return;
+        }
         const content = entryInput.value.trim();
         if (!content && images.length === 0) return;
 
@@ -1949,6 +2081,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add after the onAuthChange function
     async function migrateLocalStorageToFirebase(user) {
+        if (!user) return;
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
             try {
@@ -1974,6 +2107,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add new function to handle pagination
     async function loadMoreEntries() {
+        if (!currentUser) {
+            log('No user logged in, skipping load more');
+            return;
+        }
         if (!currentUser || PAGINATION_CONFIG.isLoading || !PAGINATION_CONFIG.hasMore) return;
         
         try {
@@ -2008,6 +2145,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Modify fetchAndMergeUpdates
     async function fetchAndMergeUpdates(userId, cachedEntries) {
+        if (!userId) {
+            log('No user ID provided, skipping fetch');
+            return;
+        }
         try {
             const lastSync = await getLastSyncTime(userId);
             log('Last sync time:', lastSync ? lastSync.toISOString() : 'never');

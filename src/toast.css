@@ -23,6 +23,9 @@
     pointer-events: auto;
     animation: toast-slide-in 0.3s ease forwards;
     border: 1px solid var(--border-color);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
 }
 
 .toast.error {

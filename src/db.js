@@ -24,6 +24,18 @@ export async function saveUserData(userId, userData) {
 }
 
 /**
+ * Gets a user's data from Firestore
+ */
+export async function getUserData(userId) {
+    const userRef = doc(db, USERS_COLLECTION, userId);
+    const userDoc = await getDoc(userRef);
+    if (userDoc.exists()) {
+        return userDoc.data();
+    }
+    return null;
+}
+
+/**
  * Saves a journal entry to Firestore
  */
 export async function saveEntry(userId, entry) {
