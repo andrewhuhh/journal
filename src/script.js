@@ -1563,7 +1563,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const file = new File([blob], `image_${Date.now()}.jpg`, { type: 'image/jpeg' });
                     
                     const { url, path } = await uploadImage(currentUser.uid, file);
-                    uploadedImages.push({ url, path });
+                    uploadedImages.push(url); // Just store the URL, not the object
                     log('Uploaded image:', path);
                 }
                 loadingToast.remove();
@@ -1573,7 +1573,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const newEntry = {
                 content,
                 date: new Date(),
-                images: uploadedImages.map(img => img.url),
+                images: uploadedImages,
             };
 
             // Save to Firebase
@@ -2267,9 +2267,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 generateCalendar(month, year);
             };
             
-            closeButton.onclick = () => {
-                closeCalendarView();
-            };
+            closeButton.onclick = closeCalendarView;
             
             // Add click handlers for days with entries
             calendarDialog.querySelectorAll('.calendar-day.has-entries').forEach(dayElement => {
@@ -2386,18 +2384,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return group;
     }
 
-    async function saveEntry(entry) {
-        try {
-            const entryId = await saveEntryToDb(entry);
-            showToast('Journal entry saved successfully!', 'success');
-            return entryId;
-        } catch (error) {
-            console.error('Error saving entry:', error);
-            showToast('Failed to save journal entry. Please try again.', 'error');
-            throw error;
-        }
-    }
-
     async function updateExistingEntry(entryId, updates) {
         try {
             await updateEntry(entryId, updates);
@@ -2465,77 +2451,4 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Failed to sign out. Please try again.', 'error');
             });
     }
-
-    // Function to properly close calendar dialog
-    function closeCalendarDialog() {
-        const calendarDialog = document.querySelector('.calendar-dialog');
-        const calendarOverlay = document.querySelector('.dialog-overlay.calendar-overlay');
-        
-        if (calendarDialog) {
-            calendarDialog.classList.remove('active');
-        }
-        if (calendarOverlay) {
-            calendarOverlay.classList.remove('active');
-        }
-        
-        // Wait for animation to complete before removing elements
-        setTimeout(() => {
-            if (calendarDialog) calendarDialog.remove();
-            if (calendarOverlay) calendarOverlay.remove();
-        }, 300);
-    }
-
-    // Update the calendar day click handler
-    calendarDialog.querySelectorAll('.calendar-day.has-entries').forEach(dayElement => {
-        dayElement.addEventListener('click', () => {
-            const [year, month, day] = dayElement.dataset.date.split('-').map(Number);
-            const selectedDate = new Date(year, month - 1, day);
-            
-            // Calculate which week this date belongs to
-            const today = new Date();
-            const startOfCurrentWeek = new Date(today);
-            startOfCurrentWeek.setHours(0, 0, 0, 0);
-            startOfCurrentWeek.setDate(today.getDate() - today.getDay());
-            
-            const selectedWeekStart = new Date(selectedDate);
-            selectedWeekStart.setHours(0, 0, 0, 0);
-            selectedWeekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
-            
-            // Calculate the difference in weeks
-            const diffWeeks = Math.round((startOfCurrentWeek - selectedWeekStart) / (7 * 24 * 60 * 60 * 1000));
-            
-            // Update the week offset and redisplay
-            if (diffWeeks !== DISPLAY_CONFIG.currentWeekOffset) {
-                DISPLAY_CONFIG.currentWeekOffset = diffWeeks;
-                displayAllEntries(diffWeeks);
-            }
-            
-            // Close the calendar dialog with animation
-            closeCalendarDialog();
-            
-            // Find and scroll to the date group
-            const dateKey = formatDateKey(selectedDate);
-            const dateGroup = document.querySelector(`.date-group[data-date="${dateKey}"]`);
-            if (dateGroup) {
-                // Ensure the group is expanded
-                dateGroup.classList.remove('collapsed');
-                const entriesContainer = dateGroup.querySelector('.date-group-entries');
-                if (entriesContainer) {
-                    entriesContainer.style.maxHeight = entriesContainer.scrollHeight + 'px';
-                }
-                
-                // Add a small delay to ensure smooth transition
-                setTimeout(() => {
-                    dateGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 350);
-            }
-        });
-    });
-
-    // Update the click outside handler
-    calendarDialog.addEventListener('click', (e) => {
-        if (e.target === calendarDialog) {
-            closeCalendarDialog();
-        }
-    });
-}); 
+});

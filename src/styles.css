@@ -178,6 +178,10 @@ body.not-authenticated::after {
     -webkit-backdrop-filter: blur(var(--blur-strength));
 }
 
+.entry-input:not(:placeholder-shown) {
+    min-height: 300px;
+}
+
 .entry-input:focus {
     outline: none;
     background: var(--flat-color);
