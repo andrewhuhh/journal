@@ -289,20 +289,24 @@ body.not-authenticated::after {
 
 .entry-images {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 16px;
-    margin-top: 24px;
+    margin-top: 16px;
 }
 
 .entry-image-wrapper {
     position: relative;
-    border-radius: 16px;
-    overflow: hidden;
     aspect-ratio: 1;
-    background: rgba(255, 255, 255, 0.3);
-    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
     cursor: pointer;
-    box-shadow: 0 4px 12px var(--shadow-color);
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s ease;
+}
+
+.entry-image-wrapper:hover {
+    transform: scale(1.02);
 }
 
 .entry-image-wrapper img {
@@ -310,10 +314,11 @@ body.not-authenticated::after {
     height: 100%;
     object-fit: cover;
     transition: transform 0.3s ease;
+    background: var(--surface-color);
 }
 
 .entry-image-wrapper:hover img {
-    transform: scale(1.05);
+    transform: scale(1.1);
 }
 
 /* Custom scrollbar */

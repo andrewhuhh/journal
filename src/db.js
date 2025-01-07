@@ -12,6 +12,8 @@ const ENTRIES_COLLECTION = 'entries';
 const USERS_COLLECTION = 'users';
 const SURVEYS_COLLECTION = 'surveys';
 
+const DEBUG = false;  // Match script.js debug setting
+
 /**
  * Creates or updates a user document in Firestore
  */
@@ -198,9 +200,10 @@ export async function getEntryDates(userId) {
 /**
  * Uploads an image to Firebase Storage
  */
-export async function uploadImage(userId, file) {
+export async function uploadImage(userId, file, isThumbnail = false) {
     const timestamp = Date.now();
-    const path = `users/${userId}/images/${timestamp}_${file.name}`;
+    const folder = isThumbnail ? 'thumbnails' : 'images';
+    const path = `users/${userId}/${folder}/${timestamp}_${file.name}`;
     const imageRef = ref(storage, path);
     
     await uploadBytes(imageRef, file);
@@ -445,11 +448,12 @@ class DatabaseService {
 
     async cacheSurvey(survey) {
         await this.init();
+        if (DEBUG) console.log('[Survey Cache] Caching survey:', survey);
+        
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['surveysCache'], 'readwrite');
             const store = transaction.objectStore('surveysCache');
 
-            // Ensure the targetDate is set to midnight in local timezone
             const targetDate = this._getLocalMidnight(survey.metadata.targetDate);
             const surveyToCache = {
                 ...survey,
@@ -463,11 +467,12 @@ class DatabaseService {
             const request = store.put(surveyToCache);
 
             request.onerror = () => {
-                console.error('Error caching survey:', request.error);
+                console.error('[Survey Cache] Error caching survey:', request.error);
                 reject(request.error);
             };
 
             request.onsuccess = () => {
+                if (DEBUG) console.log('[Survey Cache] Successfully cached survey for date:', targetDate);
                 resolve();
             };
         });
@@ -475,20 +480,28 @@ class DatabaseService {
 
     async getCachedSurvey(targetDate) {
         await this.init();
+        if (DEBUG) console.log('[Survey Cache] Looking up survey for date:', targetDate);
+        
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['surveysCache'], 'readonly');
             const store = transaction.objectStore('surveysCache');
 
-            // Convert targetDate to midnight in local timezone for lookup
             const localTargetDate = this._getLocalMidnight(targetDate);
             const request = store.get(localTargetDate);
 
             request.onerror = () => {
-                console.error('Error getting cached survey:', request.error);
+                console.error('[Survey Cache] Error getting cached survey:', request.error);
                 reject(request.error);
             };
 
             request.onsuccess = () => {
+                if (DEBUG) {
+                    if (request.result) {
+                        console.log('[Survey Cache] Found cached survey for date:', localTargetDate);
+                    } else {
+                        console.log('[Survey Cache] No cached survey found for date:', localTargetDate);
+                    }
+                }
                 resolve(request.result);
             };
         });
@@ -496,42 +509,56 @@ class DatabaseService {
 
     async submitSurvey(data) {
         await this.init();
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['surveys'], 'readwrite');
-            const store = transaction.objectStore('surveys');
+        return new Promise(async (resolve, reject) => {
+            try {
+                const transaction = this.db.transaction(['surveys', 'drafts'], 'readwrite');
+                const surveyStore = transaction.objectStore('surveys');
+                const draftStore = transaction.objectStore('drafts');
 
-            // Ensure the targetDate is set to midnight in local timezone
-            const targetDate = this._getLocalMidnight(data.metadata.targetDate);
-            const dataToSubmit = {
-                ...data,
-                metadata: {
-                    ...data.metadata,
-                    targetDate
+                // Ensure the targetDate is set to midnight in local timezone
+                const targetDate = this._getLocalMidnight(data.metadata.targetDate);
+                const dataToSubmit = {
+                    ...data,
+                    metadata: {
+                        ...data.metadata,
+                        targetDate
+                    }
+                };
+
+                const survey = {
+                    data: dataToSubmit,
+                    status: 'completed',
+                    submittedAt: new Date().toISOString()
+                };
+
+                // Save to local IndexedDB
+                await new Promise((res, rej) => {
+                    const request = surveyStore.add(survey);
+                    request.onerror = () => rej(request.error);
+                    request.onsuccess = () => res(request.result);
+                });
+
+                // Delete the draft
+                await new Promise((res, rej) => {
+                    const deleteRequest = draftStore.delete(targetDate);
+                    deleteRequest.onerror = () => rej(deleteRequest.error);
+                    deleteRequest.onsuccess = () => res();
+                });
+
+                // If user is logged in, save to Firebase
+                if (currentUser?.uid) {
+                    const firebaseSurvey = {
+                        ...survey,
+                        userId: currentUser.uid
+                    };
+                    await saveSurvey(currentUser.uid, firebaseSurvey);
                 }
-            };
 
-            const survey = {
-                data: dataToSubmit,
-                status: 'completed',
-                submittedAt: new Date().toISOString()
-            };
-
-            const request = store.add(survey);
-
-            request.onerror = () => {
-                console.error('Error submitting survey:', request.error);
-                reject(request.error);
-            };
-
-            request.onsuccess = () => {
-                // Delete the draft after successful submission using the local midnight date
-                this.deleteDraft(targetDate)
-                    .then(() => resolve())
-                    .catch(error => {
-                        console.error('Error deleting draft after submission:', error);
-                        resolve(); // Still resolve as the survey was saved
-                    });
-            };
+                resolve();
+            } catch (error) {
+                console.error('Error in submitSurvey:', error);
+                reject(error);
+            }
         });
     }
 
@@ -541,29 +568,44 @@ class DatabaseService {
         // Convert targetDate to midnight in local timezone
         const localTargetDate = this._getLocalMidnight(targetDate);
         
-        // First check local IndexedDB storage
-        const localSurvey = await this.getCachedSurvey(localTargetDate);
-        if (localSurvey) {
-            return localSurvey;
-        }
-
-        // If not found locally and we have a userId, check Firebase
-        if (userId) {
-            const firebaseSurvey = await getFirebaseSurveyForDate(userId, localTargetDate);
-            if (firebaseSurvey) {
-                // Cache the Firebase result locally
-                await this.cacheSurvey(firebaseSurvey);
-                return firebaseSurvey;
+        try {
+            // First check local IndexedDB cache
+            const localSurvey = await this.getCachedSurvey(localTargetDate);
+            if (localSurvey) {
+                return localSurvey;
             }
-        }
 
-        return null;
+            // If not found locally and we have a userId, check Firebase
+            if (userId) {
+                const firebaseSurvey = await getFirebaseSurveyForDate(userId, localTargetDate);
+                if (firebaseSurvey) {
+                    // Cache the Firebase result locally
+                    await this.cacheSurvey(firebaseSurvey);
+                    return firebaseSurvey;
+                }
+            }
+
+            // Check for local draft as last resort
+            const draft = await this.loadDraft(localTargetDate);
+            if (draft) {
+                return {
+                    data: draft.data,
+                    status: 'draft',
+                    lastUpdated: draft.lastUpdated
+                };
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Error in getSurveyForDate:', error);
+            throw error;
+        }
     }
 
     async hasSurveyForDate(targetDate) {
         await this.init();
+        if (DEBUG) console.log('[Survey Check] Checking for survey on date:', targetDate);
         
-        // Convert targetDate to midnight in local timezone
         const localTargetDate = this._getLocalMidnight(targetDate);
         
         // First check local cache
@@ -577,13 +619,17 @@ class DatabaseService {
                 request.onsuccess = () => resolve(request.result != null);
             });
             
-            if (result) return true;
+            if (result) {
+                if (DEBUG) console.log('[Survey Check] Found survey in local cache for date:', localTargetDate);
+                return true;
+            }
         } catch (error) {
-            console.error('Error checking local cache:', error);
+            console.error('[Survey Check] Error checking local cache:', error);
         }
         
         // If not in cache and we have a userId, check Firebase
         if (currentUser?.uid) {
+            if (DEBUG) console.log('[Survey Check] Checking Firebase for date:', localTargetDate);
             try {
                 const surveysRef = collection(db, SURVEYS_COLLECTION);
                 const q = query(
@@ -596,23 +642,91 @@ class DatabaseService {
                 const querySnapshot = await getDocs(q);
                 const exists = !querySnapshot.empty;
                 
-                // If found in Firebase, cache it for future use
                 if (exists) {
+                    if (DEBUG) console.log('[Survey Check] Found survey in Firebase for date:', localTargetDate);
                     const survey = {
                         id: querySnapshot.docs[0].id,
                         ...querySnapshot.docs[0].data()
                     };
                     await this.cacheSurvey(survey);
+                } else {
+                    if (DEBUG) console.log('[Survey Check] No survey found in Firebase for date:', localTargetDate);
                 }
                 
                 return exists;
             } catch (error) {
-                console.error('Error checking Firebase:', error);
+                console.error('[Survey Check] Error checking Firebase:', error);
                 return false;
             }
         }
         
+        if (DEBUG) console.log('[Survey Check] No survey found for date:', localTargetDate);
         return false;
+    }
+
+    async syncSurveysFromFirebase(userId, options = {}) {
+        if (!userId) return;
+        
+        if (DEBUG) console.log('[Survey Sync] Starting sync for user:', userId, 'with options:', options);
+        
+        try {
+            const { startDate, endDate } = options;
+            const { surveys } = await getUserSurveys(userId, { startDate, endDate });
+            
+            if (DEBUG) console.log('[Survey Sync] Fetched', surveys.length, 'surveys from Firebase');
+            
+            // Cache all fetched surveys
+            for (const survey of surveys) {
+                await this.cacheSurvey(survey);
+                if (DEBUG) console.log('[Survey Cache] Cached survey for date:', survey.metadata.targetDate);
+            }
+            
+            return surveys;
+        } catch (error) {
+            console.error('[Survey Sync] Error syncing surveys:', error);
+            throw error;
+        }
+    }
+
+    async cleanupOldDrafts() {
+        await this.init();
+        if (DEBUG) console.log('[Survey Cleanup] Starting cleanup of old drafts');
+        
+        return new Promise(async (resolve, reject) => {
+            try {
+                const transaction = this.db.transaction(['drafts', 'surveysCache'], 'readwrite');
+                const draftStore = transaction.objectStore('drafts');
+                const surveyStore = transaction.objectStore('surveysCache');
+                
+                const drafts = await new Promise((res, rej) => {
+                    const request = draftStore.getAll();
+                    request.onerror = () => rej(request.error);
+                    request.onsuccess = () => res(request.result);
+                });
+                
+                if (DEBUG) console.log('[Survey Cleanup] Found', drafts.length, 'drafts to check');
+                
+                for (const draft of drafts) {
+                    const targetDate = draft.data.metadata.targetDate;
+                    const survey = await this.getCachedSurvey(targetDate);
+                    
+                    if (survey && survey.status === 'completed') {
+                        if (DEBUG) console.log('[Survey Cleanup] Deleting draft for completed survey date:', targetDate);
+                        await new Promise((res, rej) => {
+                            const request = draftStore.delete(targetDate);
+                            request.onerror = () => rej(request.error);
+                            request.onsuccess = () => res();
+                        });
+                    }
+                }
+                
+                if (DEBUG) console.log('[Survey Cleanup] Cleanup completed');
+                resolve();
+            } catch (error) {
+                console.error('[Survey Cleanup] Error during cleanup:', error);
+                reject(error);
+            }
+        });
     }
 }
 

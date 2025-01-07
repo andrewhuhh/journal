@@ -7,7 +7,8 @@ import {
     getUserEntries,
     uploadImage,
     deleteImage,
-    getUserData 
+    getUserData,
+    dbService // Add this import
 } from './db.js';
 import { TIME_GRADIENTS } from './gradients.js';
 import { getRandomBackground } from './backgrounds.js';
@@ -698,24 +699,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             
-            // Save user data and migrate localStorage entries
-            saveUserData(user.uid, {
-                displayName: user.displayName,
-                email: user.email,
-                photoURL: user.photoURL,
-                lastLogin: new Date()
-            }).then(async () => {
-                // Load user's custom background if they have one
-                const userData = await getUserData(user.uid);
-                if (userData?.customBackgroundUrl) {
-                    customBackgroundUrl = userData.customBackgroundUrl;
-                    document.documentElement.style.setProperty('--background-url', `url('${customBackgroundUrl}')`);
-                }
+            // Save user data and sync data from Firebase
+            Promise.all([
+                // Save user data
+                saveUserData(user.uid, {
+                    displayName: user.displayName,
+                    email: user.email,
+                    photoURL: user.photoURL,
+                    lastLogin: new Date()
+                }),
                 
-                migrateLocalStorageToFirebase(user).then(() => {
-                    loadEntries(); // Load entries after migration
-                });
+                // Sync surveys from Firebase
+                dbService.syncSurveysFromFirebase(user.uid, {
+                    // Get surveys from the last 6 months
+                    startDate: new Date(Date.now() - (180 * 24 * 60 * 60 * 1000)).toISOString(),
+                    endDate: new Date().toISOString()
+                }).then(() => {
+                    // Clean up any old drafts after syncing
+                    return dbService.cleanupOldDrafts();
+                }),
+
+                // Load user's custom background if they have one
+                getUserData(user.uid).then(userData => {
+                    if (userData?.customBackgroundUrl) {
+                        customBackgroundUrl = userData.customBackgroundUrl;
+                        document.documentElement.style.setProperty('--background-url', `url('${customBackgroundUrl}')`);
+                    }
+                }),
+
+                // Migrate any localStorage entries
+                migrateLocalStorageToFirebase(user)
+            ]).then(() => {
+                loadEntries(); // Load entries after all syncing is complete
+            }).catch(error => {
+                console.error('Error during data sync:', error);
+                showToast('Some data may not be up to date. Please refresh to try again.', 'error');
+                loadEntries(); // Still load entries even if sync fails
             });
+
+            // Add periodic survey sync (every 5 minutes)
+            startSurveySync();
         } else {
             // User is signed out
             document.body.classList.add('not-authenticated');
@@ -743,6 +766,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.style.overflow = ''; // Restore scrolling
             customBackgroundUrl = null; // Reset custom background on sign out
             document.documentElement.style.setProperty('--background-url', `url('${getRandomBackground()}')`);
+
+            // Stop survey sync
+            stopSurveySync();
         }
     });
 
@@ -1379,15 +1405,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const imagesDiv = document.createElement('div');
             imagesDiv.className = 'entry-images';
             
-            entryImages.forEach(imgData => {
+            entryImages.forEach(async imgData => {
                 const imgWrapper = document.createElement('div');
                 imgWrapper.className = 'entry-image-wrapper';
                 
                 const img = document.createElement('img');
-                img.src = imgData;
                 img.loading = 'lazy';
                 
-                // Add click handler for full-screen view
+                // Create and use thumbnail for preview
+                if (imgData.startsWith('data:')) {
+                    // For new images that are still in data URL format
+                    img.src = await createThumbnail(imgData);
+                } else {
+                    // For images already stored in Firebase
+                    const thumbUrl = imgData.replace('/images/', '/thumbnails/');
+                    img.src = thumbUrl;
+                    
+                    // Fallback to original if thumbnail doesn't exist
+                    img.onerror = () => {
+                        img.src = imgData;
+                    };
+                }
+                
+                // Add click handler for full-screen view (use original high-res image)
                 imgWrapper.onclick = () => {
                     imageViewerImg.src = imgData;
                     imageViewer.classList.add('active');
@@ -1749,9 +1789,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     const blob = await response.blob();
                     const file = new File([blob], `image_${Date.now()}.jpg`, { type: 'image/jpeg' });
                     
-                    const { url, path } = await uploadImage(currentUser.uid, file);
-                    uploadedImages.push(url); // Just store the URL, not the object
-                    log('Uploaded image:', path);
+                    // Create thumbnail
+                    const thumbnail = await createThumbnail(imageData);
+                    const thumbResponse = await fetch(thumbnail);
+                    const thumbBlob = await thumbResponse.blob();
+                    const thumbFile = new File([thumbBlob], `thumb_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    
+                    // Upload both original and thumbnail
+                    const { url: originalUrl } = await uploadImage(currentUser.uid, file);
+                    const { url: thumbUrl } = await uploadImage(currentUser.uid, thumbFile, true);
+                    
+                    uploadedImages.push(originalUrl);
                 }
                 loadingToast.remove();
                 showToast('Images uploaded successfully!', 'success');
@@ -2646,5 +2694,69 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Error signing out:', error);
                 showToast('Failed to sign out. Please try again.', 'error');
             });
+    }
+
+    // Add periodic survey sync (every 5 minutes)
+    let surveySyncInterval;
+    function startSurveySync() {
+        if (surveySyncInterval) return;
+        
+        surveySyncInterval = setInterval(async () => {
+            if (!currentUser) return;
+            
+            try {
+                await dbService.syncSurveysFromFirebase(currentUser.uid, {
+                    startDate: new Date(Date.now() - (180 * 24 * 60 * 60 * 1000)).toISOString(),
+                    endDate: new Date().toISOString()
+                });
+                await dbService.cleanupOldDrafts();
+            } catch (error) {
+                console.error('Error during periodic survey sync:', error);
+            }
+        }, 5 * 60 * 1000); // 5 minutes
+    }
+
+    function stopSurveySync() {
+        if (surveySyncInterval) {
+            clearInterval(surveySyncInterval);
+            surveySyncInterval = null;
+        }
+    }
+
+    // Start sync when user logs in, stop when they log out
+    onAuthChange((user) => {
+        if (user) {
+            startSurveySync();
+        } else {
+            stopSurveySync();
+        }
+    });
+
+    // Add this function after the other utility functions
+    async function createThumbnail(imageData, maxWidth = 300) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Calculate new dimensions while maintaining aspect ratio
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > maxWidth) {
+                    height = (maxWidth * height) / width;
+                    width = maxWidth;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw and compress image
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.6)); // Reduced quality for thumbnails
+            };
+            img.src = imageData;
+        });
     }
 });

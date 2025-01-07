@@ -746,27 +746,35 @@ export class SurveyManager {
 
             const dialog = document.createElement('div');
             dialog.className = 'dialog-overlay';
-            dialog.innerHTML = `
-                <div class="dialog survey-dialog view-mode">
-                    <div class="survey-header">
-                        <h2>Survey for ${new Date(targetDate).toLocaleDateString()}</h2>
-                    </div>
-                    <div class="survey-content">
-                        ${this.createSurveyView(survey)}
-                    </div>
-                    <div class="dialog-actions">
-                        <button class="dialog-button close">Close</button>
-                    </div>
-                </div>
+            
+            // Create the dialog content
+            const dialogContent = document.createElement('div');
+            dialogContent.className = 'dialog survey-dialog view-mode';
+            
+            // Create and append the survey view
+            const surveyView = this.createSurveyView(survey);
+            
+            // Add close button
+            const closeButton = document.createElement('div');
+            closeButton.className = 'dialog-actions';
+            closeButton.innerHTML = `
+                <button class="dialog-button close">Close</button>
             `;
+
+            // Assemble the dialog
+            dialogContent.appendChild(surveyView);
+            dialogContent.appendChild(closeButton);
+            dialog.appendChild(dialogContent);
 
             // Add close handlers
             dialog.addEventListener('click', e => {
                 if (e.target === dialog || e.target.matches('.close')) {
-                    dialog.remove();
+                    dialog.classList.remove('active');
+                    setTimeout(() => dialog.remove(), 300);
                 }
             });
 
+            // Add to document and show with animation
             document.body.appendChild(dialog);
             requestAnimationFrame(() => dialog.classList.add('active'));
 
@@ -777,64 +785,65 @@ export class SurveyManager {
     }
 
     static createSurveyView(survey) {
-        return `
-            <div class="survey-section">
-                <h3>Health</h3>
-                <div class="survey-data">
-                    <div class="data-item">
-                        <label>Health Score:</label>
-                        <span>${survey.health.score}/5</span>
+        const view = document.createElement('div');
+        view.className = 'survey-view';
+
+        // Handle both survey formats (direct data or nested data object)
+        const surveyData = survey.data || survey;
+        const date = new Date(surveyData.metadata.targetDate);
+        const formattedDate = date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        });
+
+        view.innerHTML = `
+            <div class="survey-view-header">
+                <div class="survey-view-title">Survey for ${formattedDate}</div>
+            </div>
+
+            <div class="survey-metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Health Score</div>
+                    <div class="metric-value">${surveyData.health.score}/5</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Hydration</div>
+                    <div class="metric-value">${surveyData.health.hydration}/5</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Expenses</div>
+                    <div class="metric-value">
+                        <span class="material-icons-outlined">payments</span>
+                        $${surveyData.metrics.expenses.toFixed(2)}
                     </div>
-                    <div class="data-item">
-                        <label>Hydration:</label>
-                        <span>${survey.health.hydration}/5</span>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Bathroom Visits</div>
+                    <div class="metric-value">
+                        <span class="material-icons-outlined">wc</span>
+                        ${surveyData.metrics.poops}
                     </div>
                 </div>
             </div>
-            ${survey.metrics.expenses !== null || survey.metrics.poops !== null ? `
-                <div class="survey-section">
-                    <h3>Metrics</h3>
-                    <div class="survey-data">
-                        ${survey.metrics.expenses !== null ? `
-                            <div class="data-item">
-                                <label>💰 Expenses:</label>
-                                <span>$${survey.metrics.expenses.toFixed(2)}</span>
-                            </div>
-                        ` : ''}
-                        ${survey.metrics.poops !== null ? `
-                            <div class="data-item">
-                                <label>💩 Poops:</label>
-                                <span>${survey.metrics.poops}</span>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            ` : ''}
-            <div class="survey-section">
-                <h3>Mood</h3>
-                <div class="survey-data">
-                    <div class="data-item mood">
-                        <span class="mood-emoji">${survey.mood}</span>
-                    </div>
-                </div>
+
+            <div class="survey-mood">
+                <div class="mood-emoji">${surveyData.mood}</div>
             </div>
-            ${survey.reflection ? `
-                <div class="survey-section">
-                    <h3>Reflection</h3>
-                    <div class="survey-data">
-                        <p class="reflection-text">${survey.reflection}</p>
-                    </div>
-                </div>
-            ` : ''}
-            <div class="survey-section">
-                <h3>Overall Rating</h3>
-                <div class="survey-data">
-                    <div class="data-item">
-                        <span class="overall-rating">${survey.overall}/10</span>
-                    </div>
-                </div>
+
+            <div class="survey-reflection">
+                <div class="reflection-label">Reflection</div>
+                <div class="reflection-content">${surveyData.reflection}</div>
+            </div>
+
+            <div class="survey-rating">
+                <div class="rating-label">Overall Rating</div>
+                <div class="rating-value">${surveyData.overall}/10</div>
             </div>
         `;
+
+        return view;
     }
 
     // Make createStepContent async to handle async createDateInput

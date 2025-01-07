@@ -654,3 +654,127 @@
     align-items: center;
     gap: 4px;
 }
+
+.survey-view {
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    background: var(--surface);
+}
+
+.survey-view-header {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.survey-view-title {
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* Grid layout for metrics */
+.survey-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.metric-card {
+    background: var(--surface-alt);
+    padding: 0.75rem;
+    border-radius: var(--border-radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.metric-value {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Mood section */
+.survey-mood {
+    text-align: center;
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: var(--surface-alt);
+    border-radius: var(--border-radius-sm);
+}
+
+.mood-emoji {
+    font-size: 2rem;
+    line-height: 1;
+}
+
+/* Reflection section */
+.survey-reflection {
+    margin-top: 1.5rem;
+}
+
+.reflection-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.reflection-content {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+}
+
+/* Overall rating */
+.survey-rating {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.rating-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.rating-value {
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* Mobile optimizations */
+@media (max-width: 480px) {
+    .survey-view {
+        padding: 1rem;
+        max-height: 85vh;
+    }
+
+    .survey-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .metric-card {
+        padding: 0.5rem;
+    }
+
+    .mood-emoji {
+        font-size: 1.75rem;
+    }
+}
