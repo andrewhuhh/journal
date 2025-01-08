@@ -14,6 +14,7 @@ import { TIME_GRADIENTS } from './gradients.js';
 import { getRandomBackground } from './backgrounds.js';
 import { SurveyManager } from './survey.js';
 import { showToast } from './toast.js';
+import { weeklyInsights } from './weeklyInsights.js';
 
 // Add IndexedDB setup
 let currentUser = null; // Move this to the top level scope
@@ -21,10 +22,11 @@ let currentUser = null; // Move this to the top level scope
 // Add IndexedDB setup
 let dbConnection = null;
 const DB_NAME = 'journalCache';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const ENTRIES_STORE = 'entries';
 const METADATA_STORE = 'metadata';
 const DATES_STORE = 'dates';
+const USER_DATA_STORE = 'userData';
 
 // Add after IndexedDB setup constants
 const DEBUG = false;
@@ -188,6 +190,12 @@ async function initializeDB() {
             if (!db.objectStoreNames.contains(DATES_STORE)) {
                 const datesStore = db.createObjectStore(DATES_STORE, { keyPath: 'userId' });
                 log('Created dates store');
+            }
+
+            // Create user data store
+            if (!db.objectStoreNames.contains(USER_DATA_STORE)) {
+                const userDataStore = db.createObjectStore(USER_DATA_STORE, { keyPath: 'userId' });
+                log('Created user data store');
             }
         };
     });
@@ -589,26 +597,9 @@ document.addEventListener('DOMContentLoaded', () => {
             authMenuUser.textContent = user.displayName;
             authMenuEmail.textContent = user.email;
             
-            // Update auth menu to include background customization
-            const customizeSection = document.createElement('div');
-            customizeSection.className = 'auth-menu-section';
-            customizeSection.innerHTML = `
-                <div class="auth-menu-item customize-background">
-                    <span class="material-icons-outlined">wallpaper</span>
-                    Set Background
-                </div>
-                <div class="auth-menu-item reset-background">
-                    <span class="material-icons-outlined">refresh</span>
-                    Reset Background
-                </div>
-            `;
-            
-            // Insert before sign out button
-            signOutButton.parentNode.insertBefore(customizeSection, signOutButton);
-            
-            // Add click handlers for new menu items
-            const customizeBackgroundButton = customizeSection.querySelector('.customize-background');
-            const resetBackgroundButton = customizeSection.querySelector('.reset-background');
+            // Add click handlers for background customization
+            const customizeBackgroundButton = document.querySelector('.customize-background');
+            const resetBackgroundButton = document.querySelector('.reset-background');
             
             customizeBackgroundButton.addEventListener('click', () => {
                 // Create and show the background customization dialog
@@ -656,10 +647,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             customBackgroundUrl = url;
                             document.documentElement.style.setProperty('--background-url', `url('${url}')`);
                             
-                            // Save the custom background URL to user data
-                            await saveUserData(currentUser.uid, {
-                                customBackgroundUrl: url
-                            });
+                            // Save the custom background URL to user data and cache
+                            await Promise.all([
+                                saveUserData(currentUser.uid, {
+                                    customBackgroundUrl: url
+                                }),
+                                cacheUserData(currentUser.uid, {
+                                    customBackgroundUrl: url
+                                })
+                            ]);
                             
                             dialog.remove();
                             showToast('Background updated successfully!', 'success');
@@ -687,10 +683,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newBackground = getRandomBackground();
                     document.documentElement.style.setProperty('--background-url', `url('${newBackground}')`);
                     
-                    // Remove custom background URL from user data
-                    await saveUserData(currentUser.uid, {
-                        customBackgroundUrl: null
-                    });
+                    // Remove custom background URL from user data and cache
+                    await Promise.all([
+                        saveUserData(currentUser.uid, {
+                            customBackgroundUrl: null
+                        }),
+                        cacheUserData(currentUser.uid, {
+                            customBackgroundUrl: null
+                        })
+                    ]);
                     
                     authMenu.classList.remove('active');
                     showToast('Background reset to random images', 'success');
@@ -719,11 +720,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     return dbService.cleanupOldDrafts();
                 }),
 
-                // Load user's custom background if they have one
-                getUserData(user.uid).then(userData => {
-                    if (userData?.customBackgroundUrl) {
-                        customBackgroundUrl = userData.customBackgroundUrl;
+                // Try to get user data from cache first
+                getCachedUserData(user.uid).then(async (cachedData) => {
+                    if (cachedData?.customBackgroundUrl) {
+                        customBackgroundUrl = cachedData.customBackgroundUrl;
                         document.documentElement.style.setProperty('--background-url', `url('${customBackgroundUrl}')`);
+                    } else {
+                        // If not in cache, try Firebase
+                        const userData = await getUserData(user.uid);
+                        if (userData?.customBackgroundUrl) {
+                            customBackgroundUrl = userData.customBackgroundUrl;
+                            document.documentElement.style.setProperty('--background-url', `url('${customBackgroundUrl}')`);
+                            // Cache the data for future use
+                            await cacheUserData(user.uid, userData);
+                        }
                     }
                 }),
 
@@ -995,21 +1005,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 : `${formatWeekDisplay(startOfTargetWeek)} - ${formatWeekDisplay(endOfTargetWeek)}`;
         
         weekNav.innerHTML = `
-            <button class="pagination-button prev" ${weekOffset >= 52 ? 'disabled' : ''}>
-                <span class="material-icons-outlined">chevron_left</span>
-                <span class="button-text">Previous Week</span>
-            </button>
-            <span class="pagination-info">${weekDisplay}</span>
-            <button class="pagination-button next" ${weekOffset === 0 ? 'disabled' : ''}>
-                <span class="button-text">Next Week</span>
-                <span class="material-icons-outlined">chevron_right</span>
-            </button>
+            <span class="pagination-left">
+                <button class="pagination-button prev" ${weekOffset >= 52 ? 'disabled' : ''}>
+                    <span class="material-icons-outlined">chevron_left</span>
+                </button>
+                <span class="pagination-info">${weekDisplay}</span>
+                <button class="pagination-button next" ${weekOffset === 0 ? 'disabled' : ''}>
+                    <span class="material-icons-outlined">chevron_right</span>
+                </button>
+                
+            </span>
+            <span class="pagination-right">
+                <button class="pagination-button insights">
+                    <span class="material-icons-outlined">insights</span>
+                    <span class="button-text">Weekly Insights</span>
+                </button>
+            </span>
         `;
         
         // Add click handlers for week navigation
         const prevButton = weekNav.querySelector('.prev');
         const nextButton = weekNav.querySelector('.next');
+        const insightsButton = weekNav.querySelector('.insights');
         
+        insightsButton.addEventListener('click', async () => {
+            const dialog = await weeklyInsights.createInsightsDialog(weekOffset);
+            document.body.appendChild(dialog);
+            requestAnimationFrame(() => dialog.classList.add('active'));
+        });
+        
+        // Add click handlers for week navigation
         prevButton.addEventListener('click', () => {
             if (weekOffset < 52) { // Limit to one year in the past
                 DISPLAY_CONFIG.currentWeekOffset = weekOffset + 1;
@@ -1025,7 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.scrollTo(0, 0);
             }
         });
-        
+
         // Insert week navigation after today's group or at the top
         const todayGroup = document.querySelector(`.date-group[data-date="${todayKey}"]`);
         if (todayGroup) {
@@ -2757,6 +2782,57 @@ document.addEventListener('DOMContentLoaded', () => {
                 resolve(canvas.toDataURL('image/jpeg', 0.6)); // Reduced quality for thumbnails
             };
             img.src = imageData;
+        });
+    }
+
+    // Add new function to cache user data
+    async function cacheUserData(userId, userData) {
+        const db = await initializeDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(USER_DATA_STORE, 'readwrite');
+            const store = transaction.objectStore(USER_DATA_STORE);
+            
+            const request = store.put({
+                userId,
+                ...userData,
+                lastUpdated: new Date().toISOString()
+            });
+            
+            request.onerror = () => {
+                log('Error caching user data:', request.error);
+                reject(request.error);
+            };
+            
+            request.onsuccess = () => {
+                log('Successfully cached user data');
+                resolve();
+            };
+        });
+    }
+
+    // Add new function to get cached user data
+    async function getCachedUserData(userId) {
+        const db = await initializeDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(USER_DATA_STORE, 'readonly');
+            const store = transaction.objectStore(USER_DATA_STORE);
+            const request = store.get(userId);
+            
+            request.onerror = () => {
+                log('Error reading user data cache:', request.error);
+                reject(request.error);
+            };
+            
+            request.onsuccess = () => {
+                const data = request.result;
+                if (data) {
+                    log('Found user data in cache');
+                    resolve(data);
+                } else {
+                    log('No user data found in cache');
+                    resolve(null);
+                }
+            };
         });
     }
 });

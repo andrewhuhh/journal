@@ -121,9 +121,11 @@ export async function getUserEntries(userId, options = {}) {
 
         // Add date range filters if provided
         if (startDate) {
+            console.log('Adding startDate constraint:', startDate);
             queryConstraints.push(where('date', '>=', startDate));
         }
         if (endDate) {
+            console.log('Adding endDate constraint:', endDate);
             queryConstraints.push(where('date', '<=', endDate));
         }
 
@@ -134,7 +136,8 @@ export async function getUserEntries(userId, options = {}) {
         } else if (pageSize) {
             q = query(q, limit(pageSize));
         }
-        
+
+        console.log('Executing Firestore query with constraints:', queryConstraints);
         const querySnapshot = await getDocs(q);
         
         const entries = querySnapshot.docs.map(doc => {
@@ -148,6 +151,8 @@ export async function getUserEntries(userId, options = {}) {
                 images: data.images || []
             };
         });
+
+        console.log('Query returned', entries.length, 'entries');
 
         // Return the last document for pagination
         const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];

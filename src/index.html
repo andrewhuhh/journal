@@ -6,6 +6,7 @@
     <title>Journal</title>
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="./toast.css">
+    <link rel="stylesheet" href="./summary.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
 </head>
 <body class="not-authenticated">
@@ -39,13 +40,23 @@
             <div class="auth-menu-user"></div>
             <div class="auth-menu-email"></div>
         </div>
-        <div class="auth-menu-item sign-out">
-            <span class="material-icons-outlined">logout</span>
-            Sign Out
-        </div>
         <div class="auth-menu-item theme-toggle">
             <span class="material-icons-outlined">dark_mode</span>
             Dark Mode
+        </div>
+        <div class="auth-menu-section">
+            <div class="auth-menu-item customize-background">
+                <span class="material-icons-outlined">wallpaper</span>
+                Set Background
+            </div>
+            <div class="auth-menu-item reset-background">
+                <span class="material-icons-outlined">refresh</span>
+                Reset Background
+            </div>
+        </div>
+        <div class="auth-menu-item sign-out">
+            <span class="material-icons-outlined">logout</span>
+            Sign Out
         </div>
     </div>
 
@@ -97,7 +108,7 @@
                     </div>
                     <div class="stats-wrapper">
                         <button class="stats-button">
-                            <span class="material-icons-outlined">star</span>
+                            <span class="material-icons-outlined">add_reaction</span>
                             <span class="button-text">Daily Check-in</span>
                         </button>
                     </div>

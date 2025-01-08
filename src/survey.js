@@ -80,13 +80,23 @@ export class SurveyManager {
     }
 
     async createSurveyDialog(targetDate = new Date()) {
-        // Try to load existing draft or survey
-        const existingData = await this.loadExistingData(targetDate);
+        // Initialize with a clean slate
+        this.data = this.getInitialData();
+        this.data.metadata.targetDate = targetDate.toISOString();
+        this.data.metadata.inputDate = new Date().toISOString();
         
-        if (!existingData) {
-            this.data = this.getInitialData();
-            this.data.metadata.targetDate = targetDate.toISOString();
-            this.data.metadata.inputDate = new Date().toISOString();
+        // Only load draft data initially, don't check for completed surveys yet
+        const draft = await dbService.loadDraft(targetDate.toISOString());
+        if (draft) {
+            this.data = {
+                ...this.getInitialData(),
+                ...draft.data,
+                metadata: {
+                    ...this.getInitialData().metadata,
+                    ...draft.data.metadata
+                }
+            };
+            this.currentStep = draft.currentStep || 0;
         }
 
         const dialog = document.createElement('div');
@@ -96,7 +106,13 @@ export class SurveyManager {
                 <div class="survey-progress">
                     <div class="survey-progress-fill" style="width: ${((this.currentStep + 1) / SURVEY_CONFIG.steps.length) * 100}%"></div>
                 </div>
-                ${await this.createStepContent(this.currentStep)}
+                <div class="survey-content">
+                    ${await this.createStepContent(this.currentStep)}
+                </div>
+                <div class="survey-nav">
+                    <button class="back" ${this.currentStep === 0 ? 'disabled' : ''}>Back</button>
+                    <button class="next">${this.currentStep === SURVEY_CONFIG.steps.length - 1 ? 'Submit' : 'Next'}</button>
+                </div>
             </div>
         `;
 
@@ -115,7 +131,7 @@ export class SurveyManager {
         try {
             // First check if there's a completed survey
             const existingSurvey = await dbService.getSurveyForDate(targetDate.toISOString());
-            if (existingSurvey) {
+            if (existingSurvey && existingSurvey.status === 'completed') {
                 const confirmReopen = confirm('You already have a completed survey for this date. Would you like to view it?');
                 if (confirmReopen) {
                     this.data = existingSurvey.data;
@@ -138,10 +154,46 @@ export class SurveyManager {
                     }
                 };
                 this.currentStep = draft.currentStep || 0;
+                showToast('Loaded existing draft for this date.', 'info');
                 return true;
             }
         } catch (error) {
             console.error('Error loading existing data:', error);
+        }
+        return false;
+    }
+
+    async checkForExistingSurvey(targetDate) {
+        try {
+            // First check if there's a completed survey
+            const existingSurvey = await dbService.getSurveyForDate(targetDate.toISOString());
+            if (existingSurvey && existingSurvey.status === 'completed') {
+                // Show a toast warning instead of a confirmation dialog
+                showToast('You already have a completed survey for this date.', 'warning');
+                
+                // View the survey directly
+                SurveyManager.viewSurvey(targetDate.toISOString());
+                return true;
+            }
+
+            // If there's a draft, we should load it but not treat it as a completed survey
+            const draft = await dbService.loadDraft(targetDate.toISOString());
+            if (draft) {
+                this.data = {
+                    ...this.getInitialData(),
+                    ...draft.data,
+                    metadata: {
+                        ...this.getInitialData().metadata,
+                        ...draft.data.metadata
+                    }
+                };
+                this.currentStep = draft.currentStep || 0;
+                showToast('Loaded existing draft for this date.', 'info');
+                return false;
+            }
+        } catch (error) {
+            console.error('Error checking for existing survey:', error);
+            showToast('Error checking for existing survey.', 'error');
         }
         return false;
     }
@@ -355,10 +407,29 @@ export class SurveyManager {
                 const newDate = new Date(e.target.value + 'T00:00:00');
                 newDate.setHours(0, 0, 0, 0);
                 
-                // Try to load existing data for the new date
-                const existingData = await this.loadExistingData(newDate);
-                if (!existingData) {
-                    // If no existing data, reset to initial state with new date
+                // First check if there's an existing survey
+                const hasSurvey = await this.checkForExistingSurvey(newDate);
+                if (hasSurvey) {
+                    // If user chose to view the survey, the data is already loaded
+                    // If they declined, we'll close the dialog
+                    dialog.remove();
+                    return;
+                }
+                
+                // If no existing survey, try to load draft or create new
+                const draft = await dbService.loadDraft(newDate.toISOString());
+                if (draft) {
+                    this.data = {
+                        ...this.getInitialData(),
+                        ...draft.data,
+                        metadata: {
+                            ...this.getInitialData().metadata,
+                            ...draft.data.metadata
+                        }
+                    };
+                    this.currentStep = draft.currentStep || 0;
+                } else {
+                    // If no draft, reset to initial state with new date
                     this.data = this.getInitialData();
                     this.data.metadata.targetDate = newDate.toISOString();
                     this.data.metadata.inputDate = new Date().toISOString();
@@ -399,10 +470,29 @@ export class SurveyManager {
                 const newDate = new Date(dateStr + 'T00:00:00');
                 newDate.setHours(0, 0, 0, 0);
                 
-                // Try to load existing data for the new date
-                const existingData = await this.loadExistingData(newDate);
-                if (!existingData) {
-                    // If no existing data, reset to initial state with new date
+                // First check if there's an existing survey
+                const hasSurvey = await this.checkForExistingSurvey(newDate);
+                if (hasSurvey) {
+                    // If user chose to view the survey, the data is already loaded
+                    // If they declined, we'll close the dialog
+                    dialog.remove();
+                    return;
+                }
+                
+                // If no existing survey, try to load draft or create new
+                const draft = await dbService.loadDraft(newDate.toISOString());
+                if (draft) {
+                    this.data = {
+                        ...this.getInitialData(),
+                        ...draft.data,
+                        metadata: {
+                            ...this.getInitialData().metadata,
+                            ...draft.data.metadata
+                        }
+                    };
+                    this.currentStep = draft.currentStep || 0;
+                } else {
+                    // If no draft, reset to initial state with new date
                     this.data = this.getInitialData();
                     this.data.metadata.targetDate = newDate.toISOString();
                     this.data.metadata.inputDate = new Date().toISOString();
@@ -558,16 +648,43 @@ export class SurveyManager {
     }
 
     async updateStep(dialog) {
+        // Update progress bar with animation
+        const progressFill = dialog.querySelector('.survey-progress-fill');
         const progress = ((this.currentStep + 1) / SURVEY_CONFIG.steps.length) * 100;
-        dialog.querySelector('.survey-progress-fill').style.width = `${progress}%`;
+        progressFill.style.width = `${progress}%`;
         
-        const surveyDialog = dialog.querySelector('.survey-dialog');
-        surveyDialog.innerHTML = `
-            <div class="survey-progress">
-                <div class="survey-progress-fill" style="width: ${progress}%"></div>
-            </div>
-            ${await this.createStepContent(this.currentStep)}
-        `;
+        // Create new step content
+        const newStepContent = await this.createStepContent(this.currentStep);
+        
+        // Get the content container and create temporary container
+        const contentContainer = dialog.querySelector('.survey-content');
+        const tempContainer = document.createElement('div');
+        tempContainer.innerHTML = newStepContent;
+        const newStep = tempContainer.firstElementChild;
+        
+        // Get the old step
+        const oldStep = contentContainer.querySelector('.survey-step');
+        
+        // Add the new step
+        contentContainer.appendChild(newStep);
+        
+        // Force a reflow to ensure transitions work
+        newStep.offsetHeight;
+        
+        if (oldStep) {
+            // Start exit animation for old step
+            oldStep.classList.add('exit');
+            oldStep.classList.remove('active');
+            
+            // Remove old step immediately since there's no transition
+            oldStep.remove();
+        }
+        
+        // Update navigation buttons
+        const backButton = dialog.querySelector('.back');
+        const nextButton = dialog.querySelector('.next');
+        backButton.disabled = this.currentStep === 0;
+        nextButton.textContent = this.currentStep === SURVEY_CONFIG.steps.length - 1 ? 'Submit' : 'Next';
     }
 
     handleRating(button) {
@@ -754,7 +871,7 @@ export class SurveyManager {
             // Create and append the survey view
             const surveyView = this.createSurveyView(survey);
             
-            // Add close button
+            // Add close button and edit button
             const closeButton = document.createElement('div');
             closeButton.className = 'dialog-actions';
             closeButton.innerHTML = `
@@ -862,10 +979,6 @@ export class SurveyManager {
                 <div class="survey-step-title">${step.title}</div>
                 <div class="survey-step-question">${step.question}</div>
                 ${content}
-                <div class="survey-nav">
-                    <button class="back" ${stepIndex === 0 ? 'disabled' : ''}>Back</button>
-                    <button class="next">${stepIndex === SURVEY_CONFIG.steps.length - 1 ? 'Submit' : 'Next'}</button>
-                </div>
             </div>
         `;
     }
