@@ -980,7 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Add entries to the group
             entries.forEach(entry => {
-                const entryElement = createEntryElement(entry.content, new Date(entry.date), entry.images);
+                const entryElement = createEntryElement(entry.content, new Date(entry.date), entry.images, entry.id);
                 dateGroup.appendChild(entryElement);
             });
         });
@@ -1016,9 +1016,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
             </span>
             <span class="pagination-right">
-                <button class="pagination-button insights">
+                <button class="pagination-button insights special-button">
                     <span class="material-icons-outlined">insights</span>
-                    <span class="button-text">Weekly Insights</span>
+                    <span class="special-button-text">Weekly Insights</span>
                 </button>
             </span>
         `;
@@ -1303,9 +1303,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function createEntryElement(content, date, entryImages) {
+    function createEntryElement(content, date, entryImages, entryId) {
         const entry = document.createElement('div');
         entry.className = 'entry';
+        entry.dataset.entryId = entryId;
         
         // Create actions menu
         const actionsDiv = document.createElement('div');
@@ -1367,16 +1368,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const editImageUpload = editArea.querySelector('.image-upload');
         const editPreviewContainer = editArea.querySelector('.edit-preview-container');
         const editProgress = editArea.querySelector('.edit-progress');
-        let editImages = [...entryImages]; // Clone the current images array
+        
+        // Store editImages in the entry element's dataset to make it entry-specific
+        entry.dataset.editImages = JSON.stringify(entryImages);
 
         function updateEditProgress() {
-            if (editImages.length === 0) {
+            const currentEditImages = JSON.parse(entry.dataset.editImages || '[]');
+            if (currentEditImages.length === 0) {
                 editProgress.innerHTML = '';
                 return;
             }
             editProgress.innerHTML = `
                 <div class="progress-text">
-                    ${editImages.length} image${editImages.length !== 1 ? 's' : ''} attached
+                    ${currentEditImages.length} image${currentEditImages.length !== 1 ? 's' : ''} attached
                 </div>`;
         }
 
@@ -1391,7 +1395,9 @@ document.addEventListener('DOMContentLoaded', () => {
             removeButton.className = 'remove-image';
             removeButton.innerHTML = '<span class="material-icons-outlined">close</span>';
             removeButton.onclick = () => {
-                editImages = editImages.filter(image => image !== imgData);
+                const currentEditImages = JSON.parse(entry.dataset.editImages || '[]');
+                const updatedImages = currentEditImages.filter(image => image !== imgData);
+                entry.dataset.editImages = JSON.stringify(updatedImages);
                 previewDiv.remove();
                 updateEditProgress();
             };
@@ -1401,7 +1407,9 @@ document.addEventListener('DOMContentLoaded', () => {
             editPreviewContainer.appendChild(previewDiv);
             
             if (!isExisting) {
-                editImages.push(imgData);
+                const currentEditImages = JSON.parse(entry.dataset.editImages || '[]');
+                currentEditImages.push(imgData);
+                entry.dataset.editImages = JSON.stringify(currentEditImages);
             }
             updateEditProgress();
         }
@@ -1430,31 +1438,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const imagesDiv = document.createElement('div');
             imagesDiv.className = 'entry-images';
             
-            entryImages.forEach(async imgData => {
+            entryImages.forEach(imgUrl => {
                 const imgWrapper = document.createElement('div');
                 imgWrapper.className = 'entry-image-wrapper';
                 
                 const img = document.createElement('img');
                 img.loading = 'lazy';
+                img.src = imgUrl;
                 
-                // Create and use thumbnail for preview
-                if (imgData.startsWith('data:')) {
-                    // For new images that are still in data URL format
-                    img.src = await createThumbnail(imgData);
-                } else {
-                    // For images already stored in Firebase
-                    const thumbUrl = imgData.replace('/images/', '/thumbnails/');
-                    img.src = thumbUrl;
-                    
-                    // Fallback to original if thumbnail doesn't exist
-                    img.onerror = () => {
-                        img.src = imgData;
-                    };
-                }
-                
-                // Add click handler for full-screen view (use original high-res image)
+                // Add click handler for full-screen view
                 imgWrapper.onclick = () => {
-                    imageViewerImg.src = imgData;
+                    imageViewerImg.src = imgUrl;
                     imageViewer.classList.add('active');
                 };
                 
@@ -1665,99 +1659,114 @@ document.addEventListener('DOMContentLoaded', () => {
         const cancelEdit = editActions.querySelector('.cancel');
         const saveEdit = editActions.querySelector('.submit');
 
-        cancelEdit.onclick = () => {
+        // Cancel edit
+        cancelEdit.addEventListener('click', () => {
             entry.classList.remove('editing');
             editArea.querySelector('textarea').value = content;
-            editImages = [...entryImages];
+            entry.dataset.editImages = JSON.stringify(entryImages);
             editPreviewContainer.innerHTML = '';
             entryImages.forEach(imgData => createEditImagePreview(imgData, true));
             updateEditProgress();
-        };
+        });
 
-        saveEdit.onclick = async () => {
-            if (!currentUser) return;
+        // Save edit
+        saveEdit.addEventListener('click', async () => {
+            console.log('Save edit button clicked');
+            if (!currentUser) {
+                console.log('No user logged in, aborting edit');
+                return;
+            }
 
             const newContent = editArea.querySelector('textarea').value.trim();
-            if (newContent || editImages.length > 0) {
+            const currentEditImages = JSON.parse(entry.dataset.editImages || '[]');
+            console.log('New content:', newContent ? 'present' : 'empty', 'Edit images:', currentEditImages.length);
+            
+            if (newContent || currentEditImages.length > 0) {
                 try {
-                    // Upload any new images first
-                    const uploadedImages = [];
-                    for (const imageData of editImages) {
-                        if (imageData.startsWith('data:')) {
-                            // This is a new image that needs to be uploaded
-                            const response = await fetch(imageData);
-                            const blob = await response.blob();
-                            const file = new File([blob], `image_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                            
-                            const { url, path } = await uploadImage(currentUser.uid, file);
-                            uploadedImages.push(url);
-                        } else {
-                            // This is an existing image URL
-                            uploadedImages.push(imageData);
-                        }
-                    }
-
-                    // Update content
-                    contentDiv.textContent = newContent;
-
-                    // Update images
-                    const oldImagesDiv = entry.querySelector('.entry-images');
-                    if (oldImagesDiv) {
-                        oldImagesDiv.remove();
-                    }
-
-                    if (uploadedImages.length > 0) {
-                        const imagesDiv = document.createElement('div');
-                        imagesDiv.className = 'entry-images';
-                        
-                        uploadedImages.forEach(imgData => {
-                            const imgWrapper = document.createElement('div');
-                            imgWrapper.className = 'entry-image-wrapper';
-                            
-                            const img = document.createElement('img');
-                            img.src = imgData;
-                            img.loading = 'lazy';
-                            
-                            imgWrapper.onclick = () => {
-                                imageViewerImg.src = imgData;
-                                imageViewer.classList.add('active');
-                            };
-                            
-                            imgWrapper.appendChild(img);
-                            imagesDiv.appendChild(imgWrapper);
-                        });
-                        
-                        entry.appendChild(imagesDiv);
-                    }
-
-                    // Find the entry in journalEntries
-                    const timeElement = entry.querySelector('.entry-time');
-                    const dateGroup = entry.closest('.date-group');
-                    const entryDate = new Date(dateGroup.dataset.date);
+                    // Find the entry by ID
+                    const entryId = entry.dataset.entryId;
+                    console.log('Looking for entry with ID:', entryId);
                     
-                    if (timeElement) {
-                        const [time, period] = timeElement.textContent.split(' ');
-                        const [hours, minutes] = time.split(':');
-                        let hour = parseInt(hours);
-                        
-                        if (period === 'PM' && hour !== 12) hour += 12;
-                        if (period === 'AM' && hour === 12) hour = 0;
-                        
-                        entryDate.setHours(hour);
-                        entryDate.setMinutes(parseInt(minutes));
-                    }
-                    
-                    const entryIndex = journalEntries.findIndex(e => {
-                        const eDate = new Date(e.date);
-                        return eDate.getTime() === entryDate.getTime() && e.content === content;
-                    });
+                    // Find the entry in journalEntries array using the ID
+                    const entryIndex = journalEntries.findIndex(e => e.id === entryId);
+                    console.log('Found entry at index:', entryIndex);
                     
                     if (entryIndex !== -1) {
+                        const loadingToast = showToast('Updating entry...', 'info', 0);
+                        
+                        // Upload any new images first
+                        const uploadedImages = [];
+                        console.log('Processing', currentEditImages.length, 'images');
+                        
+                        for (const imageData of currentEditImages) {
+                            if (imageData.startsWith('data:')) {
+                                console.log('Processing new image upload');
+                                // This is a new image that needs to be uploaded
+                                try {
+                                    // Convert to WebP
+                                    const webpBlob = await convertToWebP(imageData);
+                                    const timestamp = Date.now();
+                                    const file = new File([webpBlob], `${timestamp}.webp`, { type: 'image/webp' });
+                                    console.log('Created WebP file:', file.name);
+                                    
+                                    const { url } = await uploadImage(currentUser.uid, file);
+                                    console.log('Image uploaded successfully:', url);
+                                    uploadedImages.push(url);
+                                } catch (error) {
+                                    console.error('Error uploading image:', error);
+                                    showToast('Error uploading an image. Continuing with others...', 'error');
+                                }
+                            } else {
+                                // This is an existing image URL
+                                console.log('Keeping existing image:', imageData);
+                                uploadedImages.push(imageData);
+                            }
+                        }
+
+                        console.log('Final uploaded images:', uploadedImages);
+
+                        // Update content
+                        contentDiv.textContent = newContent;
+
+                        // Update images
+                        const oldImagesDiv = entry.querySelector('.entry-images');
+                        if (oldImagesDiv) {
+                            console.log('Removing old images div');
+                            oldImagesDiv.remove();
+                        }
+
+                        if (uploadedImages.length > 0) {
+                            console.log('Creating new images div with', uploadedImages.length, 'images');
+                            const imagesDiv = document.createElement('div');
+                            imagesDiv.className = 'entry-images';
+                            
+                            uploadedImages.forEach(imgUrl => {
+                                const imgWrapper = document.createElement('div');
+                                imgWrapper.className = 'entry-image-wrapper';
+                                
+                                const img = document.createElement('img');
+                                img.src = imgUrl;
+                                img.loading = 'lazy';
+                                
+                                imgWrapper.onclick = () => {
+                                    imageViewerImg.src = imgUrl;
+                                    imageViewer.classList.add('active');
+                                };
+                                
+                                imgWrapper.appendChild(img);
+                                imagesDiv.appendChild(imgWrapper);
+                            });
+                            
+                            entry.appendChild(imagesDiv);
+                        }
+
                         const updatedEntry = {
                             ...journalEntries[entryIndex],
                             content: newContent,
                             images: uploadedImages
                         };
+                        
+                        console.log('Updating entry in Firebase:', updatedEntry);
                         
                         // Update in Firebase
                         await updateEntry(updatedEntry.id, {
@@ -1767,15 +1776,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // Update local array
                         journalEntries[entryIndex] = updatedEntry;
+                        
+                        loadingToast.remove();
+                        showToast('Entry updated successfully!', 'success');
+                        entry.classList.remove('editing');
+                        console.log('Edit completed successfully');
+                    } else {
+                        console.log('No matching entry found');
+                        showToast('Could not find entry to update. Please try again.', 'error');
                     }
-
-                    entry.classList.remove('editing');
                 } catch (error) {
                     console.error('Error updating entry:', error);
-                    alert('Failed to update entry. Please try again.');
+                    showToast('Failed to update entry. Please try again.', 'error');
                 }
+            } else {
+                console.log('No content or images to update');
             }
-        };
+        });
 
         // Close menus when clicking outside
         document.addEventListener('click', (e) => {
@@ -1810,30 +1827,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 const loadingToast = showToast('Uploading images...', 'info', 0);
                 log('Uploading', images.length, 'images');
                 for (const imageData of images) {
-                    const response = await fetch(imageData);
-                    const blob = await response.blob();
-                    const file = new File([blob], `image_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                    
-                    // Create thumbnail
-                    const thumbnail = await createThumbnail(imageData);
-                    const thumbResponse = await fetch(thumbnail);
-                    const thumbBlob = await thumbResponse.blob();
-                    const thumbFile = new File([thumbBlob], `thumb_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                    
-                    // Upload both original and thumbnail
-                    const { url: originalUrl } = await uploadImage(currentUser.uid, file);
-                    const { url: thumbUrl } = await uploadImage(currentUser.uid, thumbFile, true);
-                    
-                    uploadedImages.push(originalUrl);
+                    try {
+                        const timestamp = Date.now();
+                        // Convert to WebP
+                        const webpBlob = await convertToWebP(imageData);
+                        // Simplified filename structure: timestamp.webp
+                        const file = new File([webpBlob], `${timestamp}.webp`, { type: 'image/webp' });
+                        
+                        // Upload image
+                        const { url: imageUrl } = await uploadImage(currentUser.uid, file);
+                        uploadedImages.push(imageUrl);
+                    } catch (error) {
+                        console.error('Error uploading image:', error);
+                        showToast('Error uploading an image. Continuing with others...', 'error');
+                        continue;
+                    }
                 }
                 loadingToast.remove();
-                showToast('Images uploaded successfully!', 'success');
+                if (uploadedImages.length > 0) {
+                    showToast('Images uploaded successfully!', 'success');
+                }
             }
 
             const newEntry = {
                 content,
                 date: new Date(),
-                images: uploadedImages,
+                images: uploadedImages
             };
 
             // Save to Firebase
@@ -1850,7 +1869,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update local state and UI
             journalEntries.unshift(newEntry);
             
-            const entry = createEntryElement(content, newEntry.date, newEntry.images);
+            const entry = createEntryElement(content, newEntry.date, newEntry.images, newEntry.id);
             const dateGroup = getOrCreateDateGroup(newEntry.date);
             
             // Animate the entry addition
@@ -2757,34 +2776,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Add this function after the other utility functions
-    async function createThumbnail(imageData, maxWidth = 300) {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                
-                // Calculate new dimensions while maintaining aspect ratio
-                let width = img.width;
-                let height = img.height;
-                
-                if (width > maxWidth) {
-                    height = (maxWidth * height) / width;
-                    width = maxWidth;
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                
-                // Draw and compress image
-                ctx.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', 0.6)); // Reduced quality for thumbnails
-            };
-            img.src = imageData;
-        });
-    }
-
     // Add new function to cache user data
     async function cacheUserData(userId, userData) {
         const db = await initializeDB();
@@ -2833,6 +2824,49 @@ document.addEventListener('DOMContentLoaded', () => {
                     resolve(null);
                 }
             };
+        });
+    }
+
+    // Add WebP conversion function
+    async function convertToWebP(imageData) {
+        // First get the file size from the base64 string
+        const getFileSizeInMB = (base64String) => {
+            // Remove data URL prefix to get just the base64 string
+            const base64 = base64String.split(',')[1];
+            // Convert base64 length to bytes
+            const bytes = atob(base64).length;
+            // Convert to MB
+            return bytes / (1024 * 1024);
+        };
+
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+
+                // Determine quality based on file size
+                const fileSizeMB = getFileSizeInMB(imageData);
+                let quality = 0.8; // Default quality
+
+                if (fileSizeMB > 1) {
+                    // For files > 1MB, use lower quality
+                    quality = 0.2;
+                } else if (fileSizeMB > 0.5) {
+                    // For files between 0.5MB and 1MB, use medium quality
+                    quality = 0.4;
+                }
+                // Else use default high quality (0.8)
+
+                console.log(`Image size: ${fileSizeMB.toFixed(2)}MB, using quality: ${quality}`);
+                canvas.toBlob((blob) => {
+                    resolve(blob);
+                }, 'image/webp', quality);
+            };
+            img.src = imageData;
         });
     }
 });

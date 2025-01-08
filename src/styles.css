@@ -762,8 +762,9 @@ body.not-authenticated::after {
 
 .entry-edit-input {
     width: 100%;
-    min-height: 150px;
-    background: rgba(255, 255, 255, 0.4);
+    min-height: 200px;
+    background: var(--shadow-color);
+    color: var(--text-primary);
     border: 1px solid var(--border-color);
     border-radius: 12px;
     resize: vertical;
@@ -772,12 +773,14 @@ body.not-authenticated::after {
     padding: 16px;
     margin-bottom: 16px;
     font-family: inherit;
+    transition: all 0.2s ease;
 }
 
 .entry-edit-input:focus {
     outline: none;
-    background: rgba(255, 255, 255, 0.6);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: var(--flat-color);
+    border-color: var(--border-color);
+    box-shadow: 0 4px 12px var(--shadow-color);
 }
 
 .entry-edit-actions {
@@ -975,7 +978,6 @@ body.not-authenticated::after {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 1px;
     cursor: pointer;
     transition: all 0.2s ease;
     border: none;
@@ -1206,7 +1208,7 @@ body.not-authenticated::after {
 
 .menu-item.date-header .view-survey {
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: all 0.2s ease;
     padding: 4px;
     border-radius: 4px;
 }

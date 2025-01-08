@@ -74,19 +74,45 @@ export async function deleteEntry(entryId) {
     const entrySnap = await getDoc(entryRef);
     
     if (entrySnap.exists()) {
-        // Delete associated images first
-        const images = entrySnap.data().images || [];
+        const data = entrySnap.data();
+        const images = data.images || [];
+        
+        if (images.length > 0) {
+            console.log('Processing image deletion for entry:', entryId);
+        }
+        
+        // Delete all images
         await Promise.all(images.map(async (imageUrl) => {
-            const imageRef = ref(storage, imageUrl);
             try {
-                await deleteObject(imageRef);
+                // Extract just the path part from the URL
+                const urlWithoutParams = imageUrl.split('?')[0];
+                const pathParts = urlWithoutParams.split('/o/');
+                if (pathParts.length > 1) {
+                    const path = decodeURIComponent(pathParts[1]);
+                    try {
+                        const imageRef = ref(storage, path);
+                        await deleteObject(imageRef);
+                        console.log('Successfully deleted image:', path);
+                    } catch (deleteError) {
+                        // Ignore not found errors as the image might have been deleted already
+                        if (deleteError.code !== 'storage/object-not-found') {
+                            console.error('Failed to delete image:', path, deleteError.message);
+                        }
+                    }
+                }
             } catch (error) {
-                console.error('Error deleting image:', error);
+                // Only log actual errors, not "not found" cases
+                if (error.code !== 'storage/object-not-found') {
+                    console.error('Error processing image deletion:', error.message);
+                }
             }
         }));
         
         // Then delete the entry
         await deleteDoc(entryRef);
+        console.log('Successfully deleted entry:', entryId);
+    } else {
+        console.log('No entry found to delete:', entryId);
     }
 }
 
